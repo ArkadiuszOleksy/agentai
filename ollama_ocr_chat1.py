@@ -7,9 +7,6 @@ Temperatura domyślnie 0 - minimalizuje halucynacje przy przepisywaniu.
 
 Historia wielu czatów zapisywana lokalnie w pliku JSON.
 Wymaga tylko biblioteki standardowej Pythona (tkinter + urllib).
-
-Do odczytu obrazów model MUSI mieć zdolność 'vision'
-(np. qwen3-vl, llama3.2-vision). Modele tekstowe obrazu nie zobaczą.
 """
 
 import base64
@@ -28,6 +25,7 @@ from tkinter import ttk, messagebox, filedialog
 # Obsługa PDF (opcjonalna) - renderuje strony skanów na obrazy.
 try:
     import pymupdf  # PyMuPDF
+
     HAS_PDF = True
 except ImportError:
     HAS_PDF = False
@@ -35,13 +33,15 @@ except ImportError:
 # --- Konfiguracja domyślna -----------------------------------------------
 
 DEFAULT_BASE_URL = "http://192.168.100.53:11434"
-# Modele OCR (deepseek-ocr, LightOnOCR) są szybkie i nie mają trybu
-# "myślenia", przez który qwen3-vl bywał wolny i zwracał puste strony.
-PREFERRED_MODELS = ["deepseek-ocr:3b", "maternion/LightOnOCR-2:latest", "qwen3-vl:8b"]
-DEFAULT_TEMPERATURE = 0.0                # 0 = najmniej halucynacji
+# Zaktualizowana lista polecanych modeli. llama3.2-vision i qwen2.5-vl radzą sobie znacznie lepiej z OCR.
+PREFERRED_MODELS = ["llama3.2-vision:latest", "qwen2.5-vl:latest", "deepseek-ocr:3b", "maternion/LightOnOCR-2:latest"]
+DEFAULT_TEMPERATURE = 0.0  # 0 = najmniej halucynacji
 
-# Tokeny szablonowe do usunięcia z wyjścia (np. deepseek-ocr).
+# Tokeny szablonowe do usunięcia z wyjścia.
 SPECIAL_TOKEN_RE = re.compile(r"<\|[^|]*?\|>")
+
+# Wyrażenie regularne do wyciągania procentowej pewności z wygenerowanego tekstu
+CONFIDENCE_RE = re.compile(r"\[PEWNOŚĆ:\s*(\d{1,3})\s*\%?\]", re.IGNORECASE)
 
 
 def is_image_capable(name, caps):
@@ -49,60 +49,42 @@ def is_image_capable(name, caps):
     return ("vision" in caps) or ("ocr" in name.lower())
 
 
-def is_ocr_specialist(name):
-    """Wyspecjalizowany model OCR (deepseek-ocr, LightOnOCR)."""
-    return "ocr" in name.lower()
-
-
-# Natywny tryb modeli OCR - dają najlepszy odczyt (także pisma odręcznego)
-# w tym trybie; instrukcje po polsku je POGARSZAJĄ. Wynik i tak czyścimy.
-OCR_NATIVE_PROMPT = "<|grounding|>Convert the document to markdown."
-
-
-def effective_prompt(model, user_prompt):
-    """Prompt faktycznie wysyłany do modelu (dla OCR - jego natywny tryb)."""
-    if is_ocr_specialist(model):
-        return OCR_NATIVE_PROMPT
-    return user_prompt
+def extract_confidence(text):
+    """Wyciąga procentową pewność modelu z tekstu i zwraca wyczyszczony tekst oraz wartość."""
+    match = CONFIDENCE_RE.search(text)
+    conf = match.group(1) if match else None
+    clean_text = CONFIDENCE_RE.sub("", text).strip()
+    return clean_text, conf
 
 
 def clean_ocr_text(text):
-    """Usuwa tokeny szablonowe i formatowanie Markdown/LaTeX, zostawiając
-    czysty tekst 1:1 (modele OCR bywa, że dokleją #, $, \\text{}, ** itp.)."""
-    text = SPECIAL_TOKEN_RE.sub("", text)                       # <|im_end|> itd.
-    text = re.sub(r"<[^>]+>", "", text)                         # tagi HTML (<table>, <td>…)
-    text = re.sub(r"(?:None)+", "", text)                       # śmieć 'NoneNone' z tabel
-    text = re.sub(r"\\[a-zA-Z]+\{([^}]*)\}", r"\1", text)       # \text{X}, \mathrm{X} -> X
-    text = re.sub(r"\$\^\{([^}]*)\}\$", r"\1", text)            # $^{2)}$ -> 2)
-    text = text.replace("$", "")                                # pozostałe delimitery $
-    text = re.sub(r"(?m)^\s{0,3}#{1,6}\s*", "", text)           # nagłówki #, ##
-    text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)              # **pogrubienie** -> tekst
-    text = re.sub(r"(?<!\*)\*(?!\*)([^*\n]+?)\*(?!\*)", r"\1", text)  # *kursywa* -> tekst
-    text = text.replace("```", "")                              # bloki kodu
+    """Usuwa tokeny szablonowe i formatowanie Markdown/LaTeX."""
+    text = SPECIAL_TOKEN_RE.sub("", text)
+    text = re.sub(r"\\[a-zA-Z]+\{([^}]*)\}", r"\1", text)
+    text = re.sub(r"\$\^\{([^}]*)\}\$", r"\1", text)
+    text = text.replace("$", "")
+    text = re.sub(r"(?m)^\s{0,3}#{1,6}\s*", "", text)
+    text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
+    text = re.sub(r"(?<!\*)\*(?!\*)([^*\n]+?)\*(?!\*)", r"\1", text)
+    text = text.replace("```", "")
     text = text.lstrip()
     if text.lower().startswith("assistant"):
         text = text[len("assistant"):].lstrip()
     return text
+
 
 CONFIG_FILE = Path(__file__).with_name("ollama_ocr_config.json")
 HISTORY_FILE = Path(__file__).with_name("ollama_ocr_history.json")
 REQUEST_TIMEOUT = 600
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff"}
+PDF_RENDER_DPI = 250
 
-# Renderowanie i ponowna analiza stron.
-BASE_DPI = 250               # bazowa rozdzielczość renderowania stron PDF
-RETRY_DPI = 350              # wyższa rozdzielczość przy ponownej analizie
-CONFIDENCE_THRESHOLD = 70    # poniżej tego % strona jest analizowana ponownie
-MAX_ATTEMPTS = 2             # ile prób na stronę (bazowa + wyższy DPI)
-
-# Dobór okna kontekstu (num_ctx). Obrazy zużywają dużo tokenów:
-# ~2600 tok. na stronę (wejście) + zapas na przepisany tekst (wyjście).
 TOKENS_PER_IMAGE = 2600
 OUTPUT_TOKENS_PER_IMAGE = 2000
-CTX_BASE = 8192        # domyślne okno bez obrazów
+CTX_BASE = 8192
 CTX_MIN = 8192
-CTX_CAP = 65536        # górny limit (ochrona pamięci serwera)
+CTX_CAP = 65536
 
 
 def estimate_num_ctx(n_images):
@@ -115,58 +97,23 @@ def estimate_num_ctx(n_images):
 
 
 def page_num_ctx(model):
-    """Duże okno tokenów na jedną stronę (żeby nic nie ucięło). qwen3-vl
-    'myśli' i potrzebuje jeszcze więcej, inaczej zwraca puste strony."""
-    if "qwen3" in model.lower():
+    """num_ctx dla jednej strony."""
+    if "qwen" in model.lower():
         return 32768
-    return 16384
+    return CTX_BASE
 
 
-# Znaki uznawane za "sensowne" przy ocenie jakości odczytu.
-_GOOD_CHARS = set(",.;:%()/-–—+!?\"'“”„«»°²³ €$zł")
-
-
-def compute_confidence(text):
-    """Heurystyczna pewność odczytu 0-100% (serwer nie daje logprobs).
-    Wykrywa typowe awarie: puste/śmieciowe wyjście, artefakty tabel,
-    dużo znaków spoza języka, liczne [nieczytelne]."""
-    t = (text or "").strip()
-    if not t:
-        return 0
-    n = len(t)
-    if n < 15:
-        return 10
-    conf = 100.0
-    low = t.lower()
-    # artefakty całkowitej porażki (np. deepseek gubi układ w tabelę)
-    if "<table" in low or "none" in low or "|---" in t:
-        conf -= 45
-    # dużo [nieczytelne] = model sam sygnalizuje niepewność
-    illeg = low.count("nieczytelne")
-    conf -= min(45, illeg * 8)
-    # udział sensownych znaków (litery/cyfry/spacje/typowa interpunkcja)
-    good = sum(ch.isalnum() or ch.isspace() or ch in _GOOD_CHARS for ch in t)
-    ratio = good / n
-    if ratio < 0.9:
-        conf -= (0.9 - ratio) * 250  # mocna kara za znaki-śmieci
-    # bardzo krótka odpowiedź na (zwykle zapisaną) stronę
-    if n < 120:
-        conf -= 15
-    return max(0, min(100, round(conf)))
-
-# Polecenie wstawiane automatycznie po dołączeniu obrazu.
+# Ulepszony prompt wymuszający precyzję OCR oraz samoocenę modelu
 TRANSCRIBE_PROMPT = (
-    "Przepisz treść z obrazu tak, jak jest napisana - zarówno tekst "
-    "drukowany, jak i pismo odręczne. Wynik podaj jako ZWYKŁY TEKST.\n"
-    "Zasady:\n"
-    "- Nie używaj Markdown ani LaTeX (żadnych #, *, $, \\text, ```).\n"
-    "- Zachowaj oryginalny układ, wielkość liter, interpunkcję i podział "
-    "na wiersze/akapity.\n"
-    "- Nie tłumacz i nie streszczaj.\n"
-    "- Słowa odręczne, w których część liter jest czytelna, możesz "
-    "uzupełnić na podstawie kontekstu języka polskiego i formularza.\n"
-    "- ALE liczb, kwot, dat, nazwisk i adresów NIE zgaduj - jeśli nie "
-    "masz pewności, wpisz [nieczytelne]."
+    "Jesteś precyzyjnym systemem OCR. Twoim jedynym zadaniem jest bezbłędne przepisanie tekstu z załączonego obrazu 1:1.\n"
+    "Zasady bezwzględne:\n"
+    "- Przepisz treść dokładnie tak, jak jest napisana (drukowana i odręczna).\n"
+    "- ZACHOWAJ oryginalny układ, wiersze, wielkość liter i interpunkcję.\n"
+    "- NIE używaj formatowania Markdown (żadnych gwiazdek, hashtagów, bloków kodu).\n"
+    "- NIE tłumacz, nie wyjaśniaj i nie streszczaj tekstu.\n"
+    "- Jeśli słowo jest całkowicie nieczytelne, wpisz: [nieczytelne].\n"
+    "- NA SAMYM KOŃCU swojej odpowiedzi, w nowej linii, dodaj ocenę swojej pewności co do poprawności całego odczytu. "
+    "Użyj dokładnie formatu: [PEWNOŚĆ: X%], gdzie X to liczba od 0 do 100."
 )
 
 
@@ -177,7 +124,6 @@ class OllamaClient:
         self.base_url = base_url.rstrip("/")
 
     def list_models(self):
-        """Zwraca listę słowników: {'name', 'vision': bool, 'caps': [...]}."""
         url = f"{self.base_url}/api/tags"
         with urllib.request.urlopen(url, timeout=15) as resp:
             data = json.loads(resp.read().decode("utf-8"))
@@ -185,10 +131,9 @@ class OllamaClient:
         for m in data.get("models", []):
             caps = m.get("capabilities") or []
             families = (m.get("details") or {}).get("families") or []
-            # Pomiń architektury, których ta wersja Ollamy nie ładuje
-            # (np. mllama = llama3.2-vision -> "unknown model architecture").
-            if "mllama" in families:
-                continue
+            if "mllama" in families and "vision" not in caps:
+                # Wymuś capabilities dla znanych rodzin jeśli Ollama gubi flagi
+                caps.append("vision")
             out.append({
                 "name": m["name"],
                 "vision": is_image_capable(m["name"], caps),
@@ -196,13 +141,7 @@ class OllamaClient:
             })
         return out
 
-    def chat_stream(self, model, messages, temperature, num_ctx):
-        """
-        Strumieniowa rozmowa. Generator zwraca fragmenty odpowiedzi.
-        messages: lista {'role','content','images'?} gdzie images to lista
-        czystego base64 (bez prefiksu data:).
-        num_ctx: rozmiar okna kontekstu (obrazy zużywają dużo tokenów).
-        """
+    def chat_stream(self, model, messages, temperature, num_ctx, stop_event=None):
         url = f"{self.base_url}/api/chat"
         payload = json.dumps({
             "model": model,
@@ -215,8 +154,14 @@ class OllamaClient:
         req = urllib.request.Request(
             url, data=payload, headers={"Content-Type": "application/json"}
         )
+
         with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
             for raw in resp:
+                # Natychmiastowe przerwanie jeśli wciśnięto przycisk STOP
+                if stop_event and stop_event.is_set():
+                    yield "\n\n[PRZERWANO PRZEZ UŻYTKOWNIKA]"
+                    break
+
                 line = raw.decode("utf-8").strip()
                 if not line:
                     continue
@@ -313,12 +258,10 @@ class ChatApp(tk.Tk):
         self.current_chat = None
         self.streaming = False
         self.msg_queue = queue.Queue()
-        self.models = []               # [{'name','vision','caps'}]
-        # Źródła stron: {'name','kind':'image','data':bytes}
-        #            lub {'name','kind':'pdf','pdf_id':str,'page_index':int}
+        self.models = []
         self.pending_attachments = []
-        self._pdf_store = {}           # pdf_id -> bajty pliku PDF (do re-renderu)
         self._assistant_buffer = ""
+        self._stop_event = threading.Event()
 
         self._build_ui()
         self._refresh_chat_list()
@@ -381,15 +324,14 @@ class ChatApp(tk.Tk):
         vscroll = ttk.Scrollbar(self.text, command=self.text.yview)
         vscroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.text.configure(yscrollcommand=vscroll.set)
+
         self.text.tag_configure("user", foreground="#0b5cad", font=("Segoe UI", 10, "bold"), spacing1=8)
         self.text.tag_configure("assistant", foreground="#1a7f37", font=("Segoe UI", 10, "bold"), spacing1=8)
         self.text.tag_configure("body", foreground="#222", spacing3=4, lmargin1=4, lmargin2=4)
         self.text.tag_configure("attach", foreground="#8a5a00")
         self.text.tag_configure("page", foreground="#555", font=("Segoe UI", 9, "bold"), spacing1=6, spacing3=2)
-        self.text.tag_configure("confok", foreground="#1a7f37", font=("Consolas", 9, "bold"))
-        self.text.tag_configure("conflow", foreground="#b00020", font=("Consolas", 9, "bold"))
-        self.text.tag_configure("summary", foreground="#0b5cad", font=("Segoe UI", 10, "bold"), spacing1=8, spacing3=4)
         self.text.tag_configure("error", foreground="#b00020")
+        self.text.tag_configure("confidence", foreground="#00796b", font=("Segoe UI", 9, "italic"), spacing1=4)
 
         attach_bar = ttk.Frame(right)
         attach_bar.pack(side=tk.BOTTOM, fill=tk.X, pady=(6, 2))
@@ -403,8 +345,14 @@ class ChatApp(tk.Tk):
         self.entry = tk.Text(bottom, height=3, wrap=tk.WORD, font=("Segoe UI", 10))
         self.entry.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.entry.bind("<Return>", self._on_enter)
-        self.send_btn = ttk.Button(bottom, text="Wyślij", command=self._send)
-        self.send_btn.pack(side=tk.RIGHT, fill=tk.Y, padx=(6, 0))
+
+        # Przyciski Wyślij i Stop
+        btn_frame = ttk.Frame(bottom)
+        btn_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=(6, 0))
+        self.send_btn = ttk.Button(btn_frame, text="Wyślij", command=self._send, width=10)
+        self.send_btn.pack(side=tk.TOP, fill=tk.X, pady=(0, 2))
+        self.stop_btn = ttk.Button(btn_frame, text="Stop ⏹", command=self._stop, state=tk.DISABLED, width=10)
+        self.stop_btn.pack(side=tk.TOP, fill=tk.X)
 
     # ---- Modele ----------------------------------------------------------
 
@@ -446,8 +394,7 @@ class ChatApp(tk.Tk):
             self.status_var.set(f"Model {info['name']} • 👁 vision • gotowy do OCR")
         else:
             self.status_var.set(
-                f"⚠ Model {info['name']} NIE obsługuje obrazów - nie odczyta zdjęć, "
-                f"tylko tekst. Wybierz model z 👁 vision."
+                f"⚠ Model {info['name']} NIE obsługuje obrazów - nie odczyta zdjęć. Wybierz model z 👁 vision."
             )
 
     # ---- Załączniki ------------------------------------------------------
@@ -478,63 +425,33 @@ class ChatApp(tk.Tk):
                     continue
                 self.pending_attachments.append({
                     "name": path.name,
-                    "kind": "image",
-                    "data": raw,
+                    "b64": base64.b64encode(raw).decode("ascii"),
                 })
-            else:
-                messagebox.showwarning(
-                    "Nieobsługiwany plik",
-                    f"{path.name}: obsługiwane są obrazy (PNG/JPG…) oraz PDF.",
-                )
         self._update_attach_label()
 
         if self.pending_attachments and not self.entry.get("1.0", tk.END).strip():
             self.entry.insert("1.0", TRANSCRIBE_PROMPT)
 
     def _attach_pdf(self, path):
-        """Dzieli PDF na strony (źródło zachowane, by renderować w dowolnym DPI)."""
         if not HAS_PDF:
-            messagebox.showerror(
-                "Brak obsługi PDF",
-                "Aby wczytywać PDF, zainstaluj bibliotekę PyMuPDF:\n\n"
-                "    pip install pymupdf",
-            )
+            messagebox.showerror("Brak obsługi PDF", "Zainstaluj bibliotekę PyMuPDF: pip install pymupdf")
             return
         try:
-            pdf_bytes = path.read_bytes()
-            doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
-            n_pages = doc.page_count
-            doc.close()
-        except Exception as e:  # noqa: BLE001
+            doc = pymupdf.open(path)
+        except Exception as e:
             messagebox.showerror("Błąd PDF", f"Nie można otworzyć {path.name}: {e}")
             return
 
-        if n_pages > 15 and not messagebox.askyesno(
-            "Duży PDF",
-            f"{path.name} ma {n_pages} stron. Każda strona to osobne zapytanie - "
-            f"przepisywanie może długo trwać.\n\nKontynuować?",
-        ):
-            return
-
-        pdf_id = f"pdf{len(self._pdf_store)}_{path.name}"
-        self._pdf_store[pdf_id] = pdf_bytes
-        for i in range(n_pages):
-            self.pending_attachments.append({
-                "name": f"{path.name} [str. {i + 1}]",
-                "kind": "pdf",
-                "pdf_id": pdf_id,
-                "page_index": i,
-            })
-
-    def _render_page(self, entry, dpi):
-        """Zwraca base64 PNG danej strony w zadanym DPI (obraz albo strona PDF)."""
-        if entry["kind"] == "image":
-            return base64.b64encode(entry["data"]).decode("ascii")
-        pdf_bytes = self._pdf_store[entry["pdf_id"]]
-        doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+        n_pages = doc.page_count
         try:
-            pix = doc.load_page(entry["page_index"]).get_pixmap(dpi=dpi)
-            return base64.b64encode(pix.tobytes("png")).decode("ascii")
+            for i in range(n_pages):
+                page = doc.load_page(i)
+                pix = page.get_pixmap(dpi=PDF_RENDER_DPI)
+                png_bytes = pix.tobytes("png")
+                self.pending_attachments.append({
+                    "name": f"{path.name} [str. {i + 1}]",
+                    "b64": base64.b64encode(png_bytes).decode("ascii"),
+                })
         finally:
             doc.close()
 
@@ -550,7 +467,7 @@ class ChatApp(tk.Tk):
             names = ", ".join(a["name"] for a in self.pending_attachments)
             self.attach_label.configure(text=f"{n} obraz(y): {names}", foreground="#8a5a00")
 
-    # ---- Lista czatów ----------------------------------------------------
+    # ---- Chat & Interakcja -----------------------------------------------
 
     def _refresh_chat_list(self):
         self.chat_listbox.delete(0, tk.END)
@@ -567,35 +484,30 @@ class ChatApp(tk.Tk):
     def _delete_chat(self):
         if not self.current_chat:
             return
-        if not messagebox.askyesno("Usuń czat", "Na pewno usunąć ten czat?"):
-            return
-        self.store.delete(self.current_chat["id"])
-        self.current_chat = None
-        self._refresh_chat_list()
-        if self.store.chats:
-            self._select_chat(self.store.chats[0]["id"])
-        else:
-            self._new_chat()
+        if messagebox.askyesno("Usuń czat", "Na pewno usunąć ten czat?"):
+            self.store.delete(self.current_chat["id"])
+            self.current_chat = None
+            self._refresh_chat_list()
+            if self.store.chats:
+                self._select_chat(self.store.chats[0]["id"])
+            else:
+                self._new_chat()
 
     def _on_chat_selected(self, _event):
         sel = self.chat_listbox.curselection()
-        if not sel:
-            return
-        chat = self.store.chats[sel[0]]
-        if not self.current_chat or chat["id"] != self.current_chat["id"]:
-            self._select_chat(chat["id"])
+        if sel:
+            chat = self.store.chats[sel[0]]
+            if not self.current_chat or chat["id"] != self.current_chat["id"]:
+                self._select_chat(chat["id"])
 
     def _select_chat(self, chat_id):
         chat = next((c for c in self.store.chats if c["id"] == chat_id), None)
-        if not chat:
-            return
-        self.current_chat = chat
-        idx = self.store.chats.index(chat)
-        self.chat_listbox.selection_clear(0, tk.END)
-        self.chat_listbox.selection_set(idx)
-        self._render_conversation()
-
-    # ---- Renderowanie ----------------------------------------------------
+        if chat:
+            self.current_chat = chat
+            idx = self.store.chats.index(chat)
+            self.chat_listbox.selection_clear(0, tk.END)
+            self.chat_listbox.selection_set(idx)
+            self._render_conversation()
 
     def _render_conversation(self):
         self.text.configure(state=tk.NORMAL)
@@ -616,13 +528,16 @@ class ChatApp(tk.Tk):
         self.text.configure(state=tk.DISABLED)
         self.text.see(tk.END)
 
-    # ---- Wysyłanie -------------------------------------------------------
-
     def _on_enter(self, event):
-        if event.state & 0x0001:  # Shift = nowa linia
+        if event.state & 0x0001:
             return
         self._send()
         return "break"
+
+    def _stop(self):
+        if self.streaming:
+            self._stop_event.set()
+            self.status_var.set("Przerywanie...")
 
     def _send(self):
         if self.streaming:
@@ -631,31 +546,7 @@ class ChatApp(tk.Tk):
         if not text and not self.pending_attachments:
             return
 
-        info = self._selected_model_info()
-        if self.pending_attachments and info and not info["vision"]:
-            if not messagebox.askyesno(
-                "Model bez obsługi obrazu",
-                f"Model '{info['name']}' nie obsługuje obrazów - nie odczyta "
-                f"załączników i może zmyślić treść.\n\nWysłać mimo to?",
-            ):
-                return
-
-        attachments = list(self.pending_attachments)  # [{'name','b64'}]
-        n_imgs = len(attachments)
-
-        # Wolny jest tylko qwen3-vl (tryb "myślenia"); modele OCR ~5 s/stronę.
-        slow_model = "qwen3-vl" in self.model_var.get().lower()
-        if n_imgs >= 6 and slow_model:
-            est_min = round(n_imgs * 75 / 60)
-            if not messagebox.askyesno(
-                "Dużo stron",
-                f"Dołączono {n_imgs} stron, a model qwen3-vl przetwarza je wolno "
-                f"(~1 min/stronę), więc całość może zająć ok. {est_min} min.\n\n"
-                f"Wskazówka: model OCR (deepseek-ocr / LightOnOCR) zrobi to "
-                f"w kilkanaście sekund.\n\nKontynuować mimo to?",
-            ):
-                return
-
+        attachments = list(self.pending_attachments)
         if not self.current_chat:
             self._new_chat()
 
@@ -666,7 +557,6 @@ class ChatApp(tk.Tk):
         self.entry.delete("1.0", tk.END)
         self._clear_attachments()
 
-        # Zapis wiadomości użytkownika.
         self.current_chat["messages"].append({
             "role": "user", "content": text, "attachments_note": note,
         })
@@ -685,14 +575,16 @@ class ChatApp(tk.Tk):
 
         self._assistant_buffer = ""
         self.streaming = True
+        self._stop_event.clear()
+
         self.send_btn.configure(state=tk.DISABLED)
+        self.stop_btn.configure(state=tk.NORMAL)
 
         model = self.model_var.get()
         temp = self.temp_var.get()
 
         if attachments:
-            # Tryb strona-po-stronie: każdy obraz osobno - szybszy feedback,
-            # brak przepełnienia kontekstu, wierniejszy odczyt.
+            n_imgs = len(attachments)
             self.status_var.set(f"Przetwarzam stronę 1 z {n_imgs}…")
             threading.Thread(
                 target=self._pages_worker,
@@ -700,7 +592,6 @@ class ChatApp(tk.Tk):
                 daemon=True,
             ).start()
         else:
-            # Zwykła rozmowa tekstowa z historią.
             api_messages = [
                 {"role": m["role"], "content": m["content"]}
                 for m in self.current_chat["messages"]
@@ -714,77 +605,27 @@ class ChatApp(tk.Tk):
 
     def _stream_worker(self, model, messages, temperature, num_ctx):
         try:
-            for chunk in self.client.chat_stream(model, messages, temperature, num_ctx):
+            for chunk in self.client.chat_stream(model, messages, temperature, num_ctx, self._stop_event):
                 self.msg_queue.put(("chunk", chunk))
             self.msg_queue.put(("done", None))
-        except urllib.error.HTTPError as e:
-            try:
-                detail = e.read().decode("utf-8", "replace")[:500]
-            except Exception:  # noqa: BLE001
-                detail = e.reason
-            self.msg_queue.put(("stream_error", f"HTTP {e.code}: {detail}"))
-        except urllib.error.URLError as e:
-            self.msg_queue.put(("stream_error", f"Błąd połączenia: {e.reason}"))
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             self.msg_queue.put(("stream_error", str(e)))
 
     def _pages_worker(self, model, prompt, pages, temperature):
-        """Każda strona = osobne zapytanie (duże okno tokenów). Liczy pewność
-        odczytu; przy < progu analizuje stronę ponownie w wyższym DPI."""
         total = len(pages)
         num_ctx = page_num_ctx(model)
-        send_prompt = effective_prompt(model, prompt)
-        confidences = []
-        low_pages = []
-        dpis = [BASE_DPI, RETRY_DPI][:MAX_ATTEMPTS]
-
         for idx, page in enumerate(pages):
+            if self._stop_event.is_set():
+                break
             self.msg_queue.put(("page_start", (idx + 1, total, page["name"])))
-            best_text, best_conf, attempts_used = "", -1, 0
-
-            for attempt, dpi in enumerate(dpis):
-                attempts_used = attempt + 1
-                self.msg_queue.put(
-                    ("page_attempt", (idx + 1, total, attempt + 1, len(dpis), dpi, best_conf))
-                )
-                try:
-                    b64 = self._render_page(page, dpi)
-                except Exception as e:  # noqa: BLE001
-                    best_text = f"[BŁĄD renderowania strony {idx + 1}: {e}]"
-                    best_conf = 0
-                    break
-
-                raw = ""
-                try:
-                    messages = [{"role": "user", "content": send_prompt, "images": [b64]}]
-                    for chunk in self.client.chat_stream(model, messages, temperature, num_ctx):
-                        raw += chunk
-                except urllib.error.HTTPError as e:
-                    try:
-                        detail = e.read().decode("utf-8", "replace")[:200]
-                    except Exception:  # noqa: BLE001
-                        detail = e.reason
-                    raw = f"[BŁĄD: HTTP {e.code}: {detail}]"
-                except urllib.error.URLError as e:
-                    raw = f"[BŁĄD połączenia: {e.reason}]"
-                except Exception as e:  # noqa: BLE001
-                    raw = f"[BŁĄD: {e}]"
-
-                cleaned = clean_ocr_text(raw)
-                conf = compute_confidence(cleaned)
-                if conf > best_conf:
-                    best_conf, best_text = conf, cleaned
-                if conf >= CONFIDENCE_THRESHOLD:
-                    break
-
-            best_conf = max(0, best_conf)
-            confidences.append(best_conf)
-            if best_conf < CONFIDENCE_THRESHOLD:
-                low_pages.append(idx + 1)
-            self.msg_queue.put(("page_result", (best_text, best_conf, attempts_used)))
-
-        avg = round(sum(confidences) / len(confidences)) if confidences else 0
-        self.msg_queue.put(("pages_done", (avg, low_pages)))
+            messages = [{"role": "user", "content": prompt, "images": [page["b64"]]}]
+            try:
+                for chunk in self.client.chat_stream(model, messages, temperature, num_ctx, self._stop_event):
+                    self.msg_queue.put(("chunk", chunk))
+            except Exception as e:
+                self.msg_queue.put(("chunk", f"\n[BŁĄD strony {idx + 1}: {e}]\n"))
+            self.msg_queue.put(("page_flush", None))
+        self.msg_queue.put(("done", None))
 
     # ---- Pętla zdarzeń ---------------------------------------------------
 
@@ -798,12 +639,8 @@ class ChatApp(tk.Tk):
                     self.status_var.set(f"Nie można pobrać modeli: {data}")
                 elif kind == "page_start":
                     self._on_page_start(data)
-                elif kind == "page_attempt":
-                    self._on_page_attempt(data)
-                elif kind == "page_result":
-                    self._on_page_result(data)
-                elif kind == "pages_done":
-                    self._on_pages_done(data)
+                elif kind == "page_flush":
+                    self._on_page_flush()
                 elif kind == "chunk":
                     self._on_chunk(data)
                 elif kind == "done":
@@ -816,15 +653,11 @@ class ChatApp(tk.Tk):
 
     def _on_models_loaded(self, models):
         self.models = models
-        # Etykiety z oznaczeniem vision.
-        labels = [(m["name"] + ("  👁" if m["vision"] else "")) for m in models]
-        self._label_to_name = {lbl: m["name"] for lbl, m in zip(labels, models)}
         self.model_combo.configure(values=[m["name"] for m in models])
         names = [m["name"] for m in models]
         if not names:
             self.status_var.set("Serwer nie zwrócił modeli")
             return
-        # Wybór: zapamiętany > lista preferowanych > pierwszy vision > pierwszy.
         chosen = self.cfg.model if self.cfg.model in names else None
         if not chosen:
             chosen = next((p for p in PREFERRED_MODELS if p in names), None)
@@ -841,53 +674,9 @@ class ChatApp(tk.Tk):
         self.text.configure(state=tk.DISABLED)
         self.text.see(tk.END)
         self._assistant_buffer += header
-        self.status_var.set(f"Strona {idx}/{total}: analizuję…")
-
-    def _on_page_attempt(self, info):
-        idx, total, attempt, n_attempts, dpi, prev_conf = info
-        if attempt == 1:
-            self.status_var.set(f"Strona {idx}/{total}: analizuję (DPI {dpi})…")
-        else:
-            self.status_var.set(
-                f"Strona {idx}/{total}: pewność {prev_conf}% (<{CONFIDENCE_THRESHOLD}%) "
-                f"- ponawiam {attempt}/{n_attempts} w DPI {dpi}…"
-            )
-
-    def _on_page_result(self, info):
-        text, conf, attempts = info
-        ok = conf >= CONFIDENCE_THRESHOLD
-        bar = self._confidence_bar(conf)
-        retry_note = "" if attempts <= 1 else f" • prób: {attempts}"
-        line = f"[pewność {conf}%  {bar}{retry_note}]"
-        if not ok:
-            line += "  ⚠ SPRAWDŹ RĘCZNIE"
-        self.text.configure(state=tk.NORMAL)
-        self.text.insert(tk.END, line + "\n", "confok" if ok else "conflow")
-        self.text.insert(tk.END, (text or "").rstrip() + "\n", "body")
-        self.text.configure(state=tk.DISABLED)
-        self.text.see(tk.END)
-        self._assistant_buffer += line + "\n" + (text or "").rstrip() + "\n"
-
-    @staticmethod
-    def _confidence_bar(conf):
-        filled = round(conf / 10)
-        return "█" * filled + "░" * (10 - filled)
-
-    def _on_pages_done(self, info):
-        avg, low_pages = info
-        summary = f"\n═════ PODSUMOWANIE • średnia pewność: {avg}% ═════\n"
-        if low_pages:
-            pages_str = ", ".join(str(p) for p in low_pages)
-            summary += (f"Strony do ręcznego sprawdzenia (pewność <{CONFIDENCE_THRESHOLD}%): "
-                        f"{pages_str}\n")
-        else:
-            summary += "Wszystkie strony powyżej progu pewności.\n"
-        self.text.configure(state=tk.NORMAL)
-        self.text.insert(tk.END, summary, "summary")
-        self.text.configure(state=tk.DISABLED)
-        self.text.see(tk.END)
-        self._assistant_buffer += summary
-        self._finish_streaming(f"Gotowe • średnia pewność {avg}%")
+        self._page_buf_start = len(self._assistant_buffer)
+        self._page_widget_start = self.text.index("end-1c")
+        self.status_var.set(f"Przetwarzam stronę {idx} z {total}…")
 
     def _on_chunk(self, chunk):
         self.text.configure(state=tk.NORMAL)
@@ -896,22 +685,44 @@ class ChatApp(tk.Tk):
         self.text.see(tk.END)
         self._assistant_buffer += chunk
 
-    def _finish_streaming(self, status):
-        """Zapisuje odpowiedź modelu do historii i odblokowuje interfejs."""
-        self.current_chat["messages"].append(
-            {"role": "assistant", "content": self._assistant_buffer}
-        )
-        self.store.save()
-        self._assistant_buffer = ""
-        self.streaming = False
-        self.send_btn.configure(state=tk.NORMAL)
-        self.status_var.set(status)
-        self.entry.focus_set()
+    def _on_page_flush(self):
+        start = getattr(self, "_page_buf_start", None)
+        if start is None:
+            return
+
+        raw = self._assistant_buffer[start:]
+        # Wyciągnij pewność odczytu (zostawiając sam tekst)
+        text_without_conf, conf = extract_confidence(raw)
+        cleaned = clean_ocr_text(text_without_conf)
+
+        self._assistant_buffer = self._assistant_buffer[:start] + cleaned
+        self.text.configure(state=tk.NORMAL)
+        self.text.delete(self._page_widget_start, tk.END)
+        self.text.insert(tk.END, cleaned, "body")
+
+        # Jeśli znaleziono informację o pewności, wyświetl ją formatowaną na dole strony
+        if conf:
+            self.text.insert(tk.END, f"\n[Szacowana pewność odczytu OCR: {conf}%]\n", "confidence")
+
+        self.text.configure(state=tk.DISABLED)
+        self.text.see(tk.END)
 
     def _on_stream_done(self):
+        # Dla zwykłych odpowiedzi (nie strona po stronie) również wyciągamy pewność
+        if not self.pending_attachments and "PEWNOŚĆ" in self._assistant_buffer:
+            text_without_conf, conf = extract_confidence(self._assistant_buffer)
+            cleaned = clean_ocr_text(text_without_conf)
+            self.text.configure(state=tk.NORMAL)
+            self.text.delete("end-2l", tk.END)  # Zastępujemy końcówkę
+            self.text.insert(tk.END, f"\n{cleaned}\n", "body")
+            if conf:
+                self.text.insert(tk.END, f"[Szacowana pewność odpowiedzi: {conf}%]\n", "confidence")
+            self._assistant_buffer = cleaned
+
         self.text.configure(state=tk.NORMAL)
         self.text.insert(tk.END, "\n", "body")
         self.text.configure(state=tk.DISABLED)
+
         self.current_chat["messages"].append(
             {"role": "assistant", "content": self._assistant_buffer}
         )
@@ -919,7 +730,13 @@ class ChatApp(tk.Tk):
         self._assistant_buffer = ""
         self.streaming = False
         self.send_btn.configure(state=tk.NORMAL)
-        self._update_status_for_model()
+        self.stop_btn.configure(state=tk.DISABLED)
+
+        if self._stop_event.is_set():
+            self.status_var.set("Zatrzymano.")
+        else:
+            self._update_status_for_model()
+
         self.entry.focus_set()
 
     def _on_stream_error(self, message):
@@ -930,9 +747,11 @@ class ChatApp(tk.Tk):
         self._assistant_buffer = ""
         self.streaming = False
         self.send_btn.configure(state=tk.NORMAL)
+        self.stop_btn.configure(state=tk.DISABLED)
         self.status_var.set("Błąd")
 
     def _on_close(self):
+        self._stop_event.set()
         self.cfg.base_url = self.url_var.get().strip()
         self.cfg.model = self.model_var.get()
         try:
