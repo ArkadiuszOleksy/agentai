@@ -44,6 +44,23 @@ REQUEST_TIMEOUT = 600
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff"}
 PDF_RENDER_DPI = 200  # rozdzielczość renderowania stron PDF (skany pism)
 
+# Dobór okna kontekstu (num_ctx). Obrazy zużywają dużo tokenów:
+# ~2600 tok. na stronę (wejście) + zapas na przepisany tekst (wyjście).
+TOKENS_PER_IMAGE = 2600
+OUTPUT_TOKENS_PER_IMAGE = 2000
+CTX_BASE = 8192        # domyślne okno bez obrazów
+CTX_MIN = 8192
+CTX_CAP = 65536        # górny limit (ochrona pamięci serwera)
+
+
+def estimate_num_ctx(n_images):
+    """Szacuje potrzebne num_ctx na podstawie liczby dołączonych obrazów."""
+    if n_images <= 0:
+        return CTX_BASE
+    est = 2000 + n_images * (TOKENS_PER_IMAGE + OUTPUT_TOKENS_PER_IMAGE)
+    rounded = ((est + 4095) // 4096) * 4096
+    return max(CTX_MIN, min(CTX_CAP, rounded))
+
 # Polecenie wstawiane automatycznie po dołączeniu obrazu.
 TRANSCRIBE_PROMPT = (
     "Przepisz dokładnie 1:1 całą treść z załączonego dokumentu. "
@@ -76,11 +93,12 @@ class OllamaClient:
             })
         return out
 
-    def chat_stream(self, model, messages, temperature):
+    def chat_stream(self, model, messages, temperature, num_ctx):
         """
         Strumieniowa rozmowa. Generator zwraca fragmenty odpowiedzi.
         messages: lista {'role','content','images'?} gdzie images to lista
         czystego base64 (bez prefiksu data:).
+        num_ctx: rozmiar okna kontekstu (obrazy zużywają dużo tokenów).
         """
         url = f"{self.base_url}/api/chat"
         payload = json.dumps({
@@ -88,7 +106,7 @@ class OllamaClient:
             "messages": messages,
             "stream": True,
             "think": False,
-            "options": {"temperature": float(temperature)},
+            "options": {"temperature": float(temperature), "num_ctx": int(num_ctx)},
         }).encode("utf-8")
 
         req = urllib.request.Request(
@@ -503,6 +521,20 @@ class ChatApp(tk.Tk):
             ):
                 return
 
+        # Sprawdź, czy liczba stron nie przekracza rozsądnego okna kontekstu.
+        n_imgs = len(self.pending_attachments)
+        needed = 2000 + n_imgs * (TOKENS_PER_IMAGE + OUTPUT_TOKENS_PER_IMAGE)
+        if n_imgs and needed > CTX_CAP:
+            max_pages = (CTX_CAP - 2000) // (TOKENS_PER_IMAGE + OUTPUT_TOKENS_PER_IMAGE)
+            if not messagebox.askyesno(
+                "Za dużo stron naraz",
+                f"Dołączono {n_imgs} stron. Bezpiecznie mieści się ok. {max_pages} "
+                f"stron na jedno zapytanie - przy większej liczbie model może "
+                f"obciąć tekst lub zwrócić błąd.\n\nLepiej wyślij mniej stron naraz.\n\n"
+                f"Wysłać mimo to?",
+            ):
+                return
+
         if not self.current_chat:
             self._new_chat()
 
@@ -545,17 +577,24 @@ class ChatApp(tk.Tk):
 
         model = self.model_var.get()
         temp = self.temp_var.get()
+        num_ctx = estimate_num_ctx(len(images_b64))
         threading.Thread(
-            target=self._stream_worker, args=(model, api_messages, temp), daemon=True
+            target=self._stream_worker,
+            args=(model, api_messages, temp, num_ctx),
+            daemon=True,
         ).start()
 
-    def _stream_worker(self, model, messages, temperature):
+    def _stream_worker(self, model, messages, temperature, num_ctx):
         try:
-            for chunk in self.client.chat_stream(model, messages, temperature):
+            for chunk in self.client.chat_stream(model, messages, temperature, num_ctx):
                 self.msg_queue.put(("chunk", chunk))
             self.msg_queue.put(("done", None))
         except urllib.error.HTTPError as e:
-            self.msg_queue.put(("stream_error", f"HTTP {e.code}: {e.reason}"))
+            try:
+                detail = e.read().decode("utf-8", "replace")[:500]
+            except Exception:  # noqa: BLE001
+                detail = e.reason
+            self.msg_queue.put(("stream_error", f"HTTP {e.code}: {detail}"))
         except urllib.error.URLError as e:
             self.msg_queue.put(("stream_error", f"Błąd połączenia: {e.reason}"))
         except Exception as e:  # noqa: BLE001
