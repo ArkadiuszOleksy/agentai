@@ -1,0 +1,63 @@
+[
+  {
+    "id": "20260901091650716485",
+    "title": "Nowy czat",
+    "created": "2026-09-01T09:16:50",
+    "messages": []
+  },
+  {
+    "id": "20260901091648450022",
+    "title": "ile lat ma grzesiek ktory obch…",
+    "created": "2026-09-01T09:16:48",
+    "messages": [
+      {
+        "role": "user",
+        "content": "ile lat ma grzesiek ktory obchodzi 10 urodziny?"
+      },
+      {
+        "role": "assistant",
+        "content": "A birthday question!\n\nGrzesiek is a Polish name, and \"ile lat\" means \"how old\". So, you're asking how old Grzesiek will be on his 10th birthday.\n\nSince the age increases by 1 each year, if Grzesiek's 9th birthday has already passed, then he'll turn 10 on his next birthday."
+      },
+      {
+        "role": "user",
+        "content": "gdzie jest kraków"
+      },
+      {
+        "role": "assistant",
+        "content": "Kraków (also known as Cracow) is a city located in the southern part of Poland! It's a beautiful and historic city, often referred to as the cultural capital of Poland.\n\nTo be more specific:\n\n* Kraków is situated in the Lesser Poland Voivodeship (województwo małopolskie).\n* It lies along the Vistula River (Wisła) and has a population of around 760,000 people.\n* Kraków is famous for its well-preserved medieval architecture, including Wawel Castle and St. Mary's Basilica.\n\nIf you ever find yourself in Poland, Kraków is definitely worth visiting!"
+      },
+      {
+        "role": "user",
+        "content": "umiesz po polsku?"
+      },
+      {
+        "role": "assistant",
+        "content": "Ja umiem! (I do!)\n\nAlthough I'm an AI trained in multiple languages, Polish is one of them! While my proficiency might not be perfect, I can understand and respond to basic phrases and sentences. If you'd like to communicate in Polish, feel free to ask me anything, and I'll do my best to help!\n\nCzy mogę pomóc w czymś? (Can I help with something?)"
+      },
+      {
+        "role": "user",
+        "content": "tak pisz od mnie po polsku i po polsku odpowiadja"
+      },
+      {
+        "role": "assistant",
+        "content": "Okej! Dlaczego nie? (Okay! Why not?)\n\nPiszę do Ciebie po polsku:\n\nCześć, jak się masz? Czy masz jakieś pytanie czy problem, którego potrzebujesz pomocy?\n\n(odpowiedź w języku polskim)"
+      },
+      {
+        "role": "user",
+        "content": "powiedz mi jaka jest stolica polski"
+      },
+      {
+        "role": "assistant",
+        "content": "Stolicą Polski jest Warszawa!"
+      },
+      {
+        "role": "user",
+        "content": "jak na imie ma wiśniewski"
+      },
+      {
+        "role": "assistant",
+        "content": "Wiśniewski to rodzina polska, a Marek Wiśniewski to znany polski muzyk i kompozytor. Czy chcesz wiedzieć coś więcej o nim?"
+      }
+    ]
+  }
+]
