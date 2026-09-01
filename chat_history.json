@@ -57,6 +57,14 @@
       {
         "role": "assistant",
         "content": "Wiśniewski to rodzina polska, a Marek Wiśniewski to znany polski muzyk i kompozytor. Czy chcesz wiedzieć coś więcej o nim?"
+      },
+      {
+        "role": "user",
+        "content": "poweidz jak grac w kółkoo i krzyżyk"
+      },
+      {
+        "role": "assistant",
+        "content": "Wynikiem twojego prosiła!\n\nGra w Koło i Krzyżówka (Tic-Tac-Toe) to prosty i szybki sposób na spędzenie wolnego czasu. Oto instrukcje, aby zagrać:\n\n1. Rysujemy szachownicę 3x3:\n```\n 1 | 2 | 3\n  ---------\n4 | 5 | 6\n  ---------\n7 | 8 | 9\n```\n2. Wybieramy symbol, który będziemy używać: \"O\" (kółko) lub \"X\" (krzyżyk).\n3. Początkowo wszystkie pole szachownicy są puste.\n4. Pierwszym ruchem jest \"O\", które umieszcza swój symbol na wolnym polu.\n5. Następnie \"X\" umieszcza swój symbol na wolnym polu, nie powodując, aby pole było zajęte przez \"O\".\n6. Granie się toczy, aż jeden z graczy umieści swój symbol trzy razy w rzędzie, kolumnie lub przekątnej.\n7. Jeśli żaden z graczy nie może umieścić swego symbolu, gra jest remisem.\n\nPora na grę! Wybierz symbol i umieszcza go na wolnym polu."
       }
     ]
   }

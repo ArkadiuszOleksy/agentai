@@ -1,0 +1,14 @@
+[
+  {
+    "id": "20260901102048429605",
+    "title": "Przepisz dokładnie 1:1 całą tr…",
+    "created": "2026-09-01T10:20:48",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Przepisz dokładnie 1:1 całą treść z załączonego dokumentu. Odwzoruj zarówno tekst drukowany, jak i pismo ręczne. Nie streszczaj, nie poprawiaj, nie tłumacz - zachowaj oryginalny układ, interpunkcję i podział na akapity. Jeśli czegoś nie da się odczytać, oznacz to jako [nieczytelne].",
+        "attachments_note": "Załączono: Komorski_oświadczenie_o_stanie_majątkowym_za_2023_r.pdf"
+      }
+    ]
+  }
+]

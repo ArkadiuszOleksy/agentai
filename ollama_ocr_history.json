@@ -1,0 +1,19 @@
+[
+  {
+    "id": "20260901112737007459",
+    "title": "Przepisz dokładnie 1:1 całą tr…",
+    "created": "2026-09-01T11:27:37",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Przepisz dokładnie 1:1 całą treść z załączonego dokumentu. Odwzoruj zarówno tekst drukowany, jak i pismo ręczne. Nie streszczaj, nie interpretuj, nie poprawiaj i nie tłumacz. Zachowaj oryginalny układ, interpunkcję, wielkość liter i podział na akapity. Jeśli fragment jest nieczytelny, oznacz go jako [nieczytelne] zamiast zgadywać.",
+        "attachments_note": "Załączono: Komorski_oświadczenie_o_stanie_majątkowym_za_2023_r.pdf [str. 1], Komorski_oświadczenie_o_stanie_majątkowym_za_2023_r.pdf [str. 2], Komorski_oświadczenie_o_stanie_majątkowym_za_2023_r.pdf [str. 3]"
+      },
+      {
+        "role": "user",
+        "content": "Przepisz dokładnie 1:1 całą treść z załączonego dokumentu. Odwzoruj zarówno tekst drukowany, jak i pismo ręczne. Nie streszczaj, nie interpretuj, nie poprawiaj i nie tłumacz. Zachowaj oryginalny układ, interpunkcję, wielkość liter i podział na akapity. Jeśli fragment jest nieczytelny, oznacz go jako [nieczytelne] zamiast zgadywać.",
+        "attachments_note": "Załączono: Cebula_oświadczenie_o_stanie_majątkowym_za_2023_r.pdf [str. 1], Cebula_oświadczenie_o_stanie_majątkowym_za_2023_r.pdf [str. 2], Cebula_oświadczenie_o_stanie_majątkowym_za_2023_r.pdf [str. 3], Cebula_oświadczenie_o_stanie_majątkowym_za_2023_r.pdf [str. 4], Cebula_oświadczenie_o_stanie_majątkowym_za_2023_r.pdf [str. 5]"
+      }
+    ]
+  }
+]
