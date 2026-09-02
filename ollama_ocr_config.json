@@ -1,5 +1,5 @@
 {
   "base_url": "http://192.168.100.53:11434",
-  "model": "qwen3-vl:8b",
-  "temperature": 1.0
+  "vision_model": "qwen3-vl:8b",
+  "text_model": "llama3:latest"
 }

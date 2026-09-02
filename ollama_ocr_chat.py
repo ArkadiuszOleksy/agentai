@@ -1,243 +1,203 @@
-"""
-Ollama OCR Chat - agent z GUI do przepisywania dokumentów 1:1.
-
-Łączy się bezpośrednio z serwerem Ollama, pozwala DOŁĄCZAĆ zdjęcia/skany
-(również pisma ręcznego) i prosić model vision o przepisanie treści 1:1.
-Temperatura domyślnie 0 - minimalizuje halucynacje przy przepisywaniu.
-
-Historia wielu czatów zapisywana lokalnie w pliku JSON.
-Wymaga tylko biblioteki standardowej Pythona (tkinter + urllib).
-
-Do odczytu obrazów model MUSI mieć zdolność 'vision'
-(np. qwen3-vl, llama3.2-vision). Modele tekstowe obrazu nie zobaczą.
-"""
+"""Ollama HTR - Enterprise Edition with Diagnostic Logs & ETA"""
 
 import base64
+from datetime import datetime
+import io
 import json
+from pathlib import Path
 import queue
 import re
 import threading
-import urllib.request
-import urllib.error
-from datetime import datetime
-from pathlib import Path
-
+import time
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import filedialog, messagebox, ttk
+import urllib.error
+import urllib.request
 
-# Obsługa PDF (opcjonalna) - renderuje strony skanów na obrazy.
 try:
-    import pymupdf  # PyMuPDF
+    import cv2
+    import numpy as np
+    from PIL import Image, ImageEnhance
+    HAS_CV2 = True
+except ImportError:
+    HAS_CV2 = False
+
+try:
+    import pymupdf
     HAS_PDF = True
 except ImportError:
     HAS_PDF = False
 
-# --- Konfiguracja domyślna -----------------------------------------------
+try:
+    from rapidfuzz import process, fuzz
+    HAS_RAPIDFUZZ = True
+except ImportError:
+    HAS_RAPIDFUZZ = False
 
-DEFAULT_BASE_URL = "http://192.168.100.53:11434"
-# Modele OCR (deepseek-ocr, LightOnOCR) są szybkie i nie mają trybu
-# "myślenia", przez który qwen3-vl bywał wolny i zwracał puste strony.
-PREFERRED_MODELS = ["deepseek-ocr:3b", "maternion/LightOnOCR-2:latest", "qwen3-vl:8b"]
-DEFAULT_TEMPERATURE = 0.0                # 0 = najmniej halucynacji
+# --- KONFIGURACJA BAZOWA ---
+DEFAULT_BASE_URL = "http://127.0.0.1:11434"
+PREFERRED_VISION_MODELS = ["qwen3-vl:8b", "minicpm-v:latest", "llama3.2-vision:latest"]
+PREFERRED_TEXT_MODELS = ["llama3.1:8b", "qwen2.5:7b", "mistral:latest"]
+DEFAULT_TEMPERATURE = 0.0
 
-# Tokeny szablonowe do usunięcia z wyjścia (np. deepseek-ocr).
-SPECIAL_TOKEN_RE = re.compile(r"<\|[^|]*?\|>")
+BASE_DPI = 300
+RETRY_DPI = 450
+CONFIDENCE_THRESHOLD = 70
 
+# --- BAZA WIEDZY I PROMPTY ---
+TRANSCRIBE_PROMPT = """Odczytaj wyłącznie wartości wpisane odręcznie w pola formularza. Zignoruj drukowane preambuły. Przepisz dokładnie to, co widzisz, uwzględniając polskie znaki."""
 
-def is_image_capable(name, caps):
-    """Czy model potrafi czytać obrazy (vision lub wyspecjalizowany OCR)."""
-    return ("vision" in caps) or ("ocr" in name.lower())
+CORRECTION_PROMPT = """Jesteś ekspertem ds. polskich dokumentów prawnych. 
+Poniżej znajduje się surowy tekst z systemu OCR, zawierający błędy z powodu nieczytelnego pisma odręcznego.
+Twoje zadanie:
+1. Popraw literówki, ucięte ogonki (ą, ć, ę, ł, ń, ó, ś, ź, ż) i zrekonstruuj nazwy urzędów/miejscowości.
+2. Zastosuj się do formatu: "- **[Nazwa pola]**: [Odczytana wartość]"
+3. Nie zmyślaj danych, których nie ma w tekście. Zwróć sam poprawiony tekst.
 
+SUROWY TEKST DO KOREKTY:
+{raw_text}"""
 
-def is_ocr_specialist(name):
-    """Wyspecjalizowany model OCR (deepseek-ocr, LightOnOCR)."""
-    return "ocr" in name.lower()
+POLSKI_SLOWNIK_URZEDOWY = [
+    "WŁASNOŚĆ", "WSPÓŁWŁASNOŚĆ", "MAŁŻEŃSKA WSPÓLNOŚĆ MAJĄTKOWA", "ODRĘBNA WŁASNOŚĆ",
+    "DZIERŻAWA", "UŻYTKOWANIE WIECZYSTE", "NAJEM", "NIE DOTYCZY", "BRAK",
+    "ROLA", "ZABUDOWA ZAGRODOWA", "DZIAŁKA", "LOKAL USŁUGOWY", "MIESZKANIE", "LAS",
+    "ŚWIĘTOKRZYSKI URZĄD WOJEWÓDZKI", "URZĄD MIASTA", "URZĄD GMINY", "STAROSTWO POWIATOWE",
+    "AGENCJA RESTRUKTURYZACJI I MODERNIZACJI ROLNICTWA", "ARiMR", "ZAKŁAD UBEZPIECZEŃ SPOŁECZNYCH", "ZUS",
+    "DOCHÓD", "PRZYCHÓD", "ZOBOWIĄZANIA PIENIĘŻNE", "KREDYT HIPOTECZNY", "POŻYCZKA"
+]
+SPECIAL_TOKEN_RE = re.compile(r"<\|(?:im_start|im_end|grounding|endoftext|pad)[^|]*?\|>")
 
+# --- SILNIK WIZYJNY OpenCV (CPU) ---
+def preprocess_with_opencv(image_bytes):
+    if not HAS_CV2:
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        img = ImageEnhance.Contrast(img).enhance(1.8)
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG", quality=95)
+        return [base64.b64encode(buffer.getvalue()).decode("ascii")]
 
-# Natywny tryb modeli OCR - dają najlepszy odczyt (także pisma odręcznego)
-# w tym trybie; instrukcje po polsku je POGARSZAJĄ. Wynik i tak czyścimy.
-OCR_NATIVE_PROMPT = "<|grounding|>Convert the document to markdown."
+    np_arr = np.frombuffer(image_bytes, np.uint8)
+    img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+    enhanced_gray = clahe.apply(gray)
+    _, thresh = cv2.threshold(enhanced_gray, 200, 255, cv2.THRESH_TRUNC)
+    enhanced_bgr = cv2.cvtColor(thresh, cv2.COLOR_GRAY2BGR)
+    img = cv2.addWeighted(img, 0.4, enhanced_bgr, 0.6, 0)
 
-def effective_prompt(model, user_prompt):
-    """Prompt faktycznie wysyłany do modelu (dla OCR - jego natywny tryb)."""
-    if is_ocr_specialist(model):
-        return OCR_NATIVE_PROMPT
-    return user_prompt
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    coords = cv2.findNonZero(binary)
+    if coords is not None:
+        x, y, w, h = cv2.boundingRect(coords)
+        pad = 20
+        H, W = img.shape[:2]
+        x1, y1 = max(0, x - pad), max(0, y - pad)
+        x2, y2 = min(W, x + w + pad), min(H, y + h + pad)
+        cropped_img = img[y1:y2, x1:x2]
+    else:
+        cropped_img = img
 
+    h_c, w_c = cropped_img.shape[:2]
+    chunks = []
+    if h_c > w_c * 1.1:
+        step = h_c // 3
+        overlap = int(h_c * 0.05)
+        y_starts = [0, step - overlap, 2 * step - overlap]
+        y_ends = [step + overlap, 2 * step + overlap, h_c]
+        for ys, ye in zip(y_starts, y_ends):
+            chunks.append(cropped_img[ys:ye, 0:w_c])
+    else:
+        chunks.append(cropped_img)
+
+    b64_chunks = []
+    for chunk in chunks:
+        rgb_chunk = cv2.cvtColor(chunk, cv2.COLOR_BGR2RGB)
+        pil_img = Image.fromarray(rgb_chunk)
+        pil_img = ImageEnhance.Sharpness(pil_img).enhance(2.0)
+        buffer = io.BytesIO()
+        pil_img.save(buffer, format="JPEG", quality=95)
+        b64_chunks.append(base64.b64encode(buffer.getvalue()).decode("ascii"))
+
+    return b64_chunks
+
+def slownikowa_korekta_htr(tekst):
+    if not HAS_RAPIDFUZZ or not tekst: return tekst
+    poprawiony = tekst
+    slowa = [w for w in re.split(r'\W+', tekst) if len(w) > 5]
+    for slowo in slowa:
+        dopasowanie = process.extractOne(slowo.upper(), POLSKI_SLOWNIK_URZEDOWY, scorer=fuzz.WRatio)
+        if dopasowanie and dopasowanie[1] > 88:
+            poprawiony = re.sub(rf'\b{slowo}\b', dopasowanie[0], poprawiony, flags=re.IGNORECASE)
+    return poprawiony
 
 def clean_ocr_text(text):
-    """Usuwa tokeny szablonowe i formatowanie Markdown/LaTeX, zostawiając
-    czysty tekst 1:1 (modele OCR bywa, że dokleją #, $, \\text{}, ** itp.)."""
-    text = SPECIAL_TOKEN_RE.sub("", text)                       # <|im_end|> itd.
-    text = re.sub(r"<[^>]+>", "", text)                         # tagi HTML (<table>, <td>…)
-    text = re.sub(r"(?:None)+", "", text)                       # śmieć 'NoneNone' z tabel
-    text = re.sub(r"\\[a-zA-Z]+\{([^}]*)\}", r"\1", text)       # \text{X}, \mathrm{X} -> X
-    text = re.sub(r"\$\^\{([^}]*)\}\$", r"\1", text)            # $^{2)}$ -> 2)
-    text = text.replace("$", "")                                # pozostałe delimitery $
-    text = re.sub(r"(?m)^\s{0,3}#{1,6}\s*", "", text)           # nagłówki #, ##
-    text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)              # **pogrubienie** -> tekst
-    text = re.sub(r"(?<!\*)\*(?!\*)([^*\n]+?)\*(?!\*)", r"\1", text)  # *kursywa* -> tekst
-    text = text.replace("```", "")                              # bloki kodu
+    text = SPECIAL_TOKEN_RE.sub("", text)
+    text = re.sub(r"<[^>]+>", "", text)
+    text = re.sub(r"(?:None){2,}", "", text)
     text = text.lstrip()
-    if text.lower().startswith("assistant"):
-        text = text[len("assistant"):].lstrip()
+    if text.lower().startswith("assistant\n"):
+        text = text[len("assistant\n") :].lstrip()
     return text
 
-CONFIG_FILE = Path(__file__).with_name("ollama_ocr_config.json")
-HISTORY_FILE = Path(__file__).with_name("ollama_ocr_history.json")
-REQUEST_TIMEOUT = 600
-
-IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff"}
-
-# Renderowanie i ponowna analiza stron.
-BASE_DPI = 250               # bazowa rozdzielczość renderowania stron PDF
-RETRY_DPI = 350              # wyższa rozdzielczość przy ponownej analizie
-CONFIDENCE_THRESHOLD = 70    # poniżej tego % strona jest analizowana ponownie
-MAX_ATTEMPTS = 2             # ile prób na stronę (bazowa + wyższy DPI)
-
-# Dobór okna kontekstu (num_ctx). Obrazy zużywają dużo tokenów:
-# ~2600 tok. na stronę (wejście) + zapas na przepisany tekst (wyjście).
-TOKENS_PER_IMAGE = 2600
-OUTPUT_TOKENS_PER_IMAGE = 2000
-CTX_BASE = 8192        # domyślne okno bez obrazów
-CTX_MIN = 8192
-CTX_CAP = 65536        # górny limit (ochrona pamięci serwera)
-
-
-def estimate_num_ctx(n_images):
-    """Szacuje potrzebne num_ctx na podstawie liczby dołączonych obrazów."""
-    if n_images <= 0:
-        return CTX_BASE
-    est = 2000 + n_images * (TOKENS_PER_IMAGE + OUTPUT_TOKENS_PER_IMAGE)
-    rounded = ((est + 4095) // 4096) * 4096
-    return max(CTX_MIN, min(CTX_CAP, rounded))
-
-
-def page_num_ctx(model):
-    """Duże okno tokenów na jedną stronę (żeby nic nie ucięło). qwen3-vl
-    'myśli' i potrzebuje jeszcze więcej, inaczej zwraca puste strony."""
-    if "qwen3" in model.lower():
-        return 32768
-    return 16384
-
-
-# Znaki uznawane za "sensowne" przy ocenie jakości odczytu.
-_GOOD_CHARS = set(",.;:%()/-–—+!?\"'“”„«»°²³ €$zł")
-
-
 def compute_confidence(text):
-    """Heurystyczna pewność odczytu 0-100% (serwer nie daje logprobs).
-    Wykrywa typowe awarie: puste/śmieciowe wyjście, artefakty tabel,
-    dużo znaków spoza języka, liczne [nieczytelne]."""
     t = (text or "").strip()
-    if not t:
-        return 0
-    n = len(t)
-    if n < 15:
-        return 10
+    if not t: return 0
+    if len(t) < 20: return 10
     conf = 100.0
-    low = t.lower()
-    # artefakty całkowitej porażki (np. deepseek gubi układ w tabelę)
-    if "<table" in low or "none" in low or "|---" in t:
-        conf -= 45
-    # dużo [nieczytelne] = model sam sygnalizuje niepewność
-    illeg = low.count("nieczytelne")
-    conf -= min(45, illeg * 8)
-    # udział sensownych znaków (litery/cyfry/spacje/typowa interpunkcja)
-    good = sum(ch.isalnum() or ch.isspace() or ch in _GOOD_CHARS for ch in t)
-    ratio = good / n
-    if ratio < 0.9:
-        conf -= (0.9 - ratio) * 250  # mocna kara za znaki-śmieci
-    # bardzo krótka odpowiedź na (zwykle zapisaną) stronę
-    if n < 120:
-        conf -= 15
-    return max(0, min(100, round(conf)))
-
-# Polecenie wstawiane automatycznie po dołączeniu obrazu.
-TRANSCRIBE_PROMPT = (
-    "Przepisz treść z obrazu tak, jak jest napisana - zarówno tekst "
-    "drukowany, jak i pismo odręczne. Wynik podaj jako ZWYKŁY TEKST.\n"
-    "Zasady:\n"
-    "- Nie używaj Markdown ani LaTeX (żadnych #, *, $, \\text, ```).\n"
-    "- Zachowaj oryginalny układ, wielkość liter, interpunkcję i podział "
-    "na wiersze/akapity.\n"
-    "- Nie tłumacz i nie streszczaj.\n"
-    "- Słowa odręczne, w których część liter jest czytelna, możesz "
-    "uzupełnić na podstawie kontekstu języka polskiego i formularza.\n"
-    "- ALE liczb, kwot, dat, nazwisk i adresów NIE zgaduj - jeśli nie "
-    "masz pewności, wpisz [nieczytelne]."
-)
-
-
-# --- Klient Ollama --------------------------------------------------------
+    if "nieczytelne" in t.lower(): conf -= min(40, t.lower().count("nieczytelne") * 10)
+    if not any(c in set("ąćęłńóśźżĄĆĘŁŃÓŚŹŻ") for c in t): conf -= 15
+    good = sum(ch.isalnum() or ch.isspace() or ch in set(",.;:%()/-–—+!?\"'“”„«»°²³ €$zł\n\r\t*-_:[]") for ch in t)
+    ratio = good / len(t)
+    if ratio < 0.85: conf -= (0.85 - ratio) * 200
+    return max(5, min(100, round(conf)))
 
 class OllamaClient:
-    def __init__(self, base_url):
+    def __init__(self, base_url, logger_callback=None):
         self.base_url = base_url.rstrip("/")
+        self.log = logger_callback
 
     def list_models(self):
-        """Zwraca listę słowników: {'name', 'vision': bool, 'caps': [...]}."""
         url = f"{self.base_url}/api/tags"
-        with urllib.request.urlopen(url, timeout=15) as resp:
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         out = []
         for m in data.get("models", []):
             caps = m.get("capabilities") or []
-            families = (m.get("details") or {}).get("families") or []
-            # Pomiń architektury, których ta wersja Ollamy nie ładuje
-            # (np. mllama = llama3.2-vision -> "unknown model architecture").
-            if "mllama" in families:
-                continue
-            out.append({
-                "name": m["name"],
-                "vision": is_image_capable(m["name"], caps),
-                "caps": caps,
-            })
+            out.append({"name": m["name"], "vision": ("vision" in caps) or any(k in m["name"].lower() for k in ["vl", "vision", "minicpm"])})
         return out
 
-    def chat_stream(self, model, messages, temperature, num_ctx):
-        """
-        Strumieniowa rozmowa. Generator zwraca fragmenty odpowiedzi.
-        messages: lista {'role','content','images'?} gdzie images to lista
-        czystego base64 (bez prefiksu data:).
-        num_ctx: rozmiar okna kontekstu (obrazy zużywają dużo tokenów).
-        """
+    def chat_stream(self, model, messages, temperature, num_ctx=32768):
         url = f"{self.base_url}/api/chat"
-        payload = json.dumps({
-            "model": model,
-            "messages": messages,
-            "stream": True,
-            "think": False,
-            "options": {"temperature": float(temperature), "num_ctx": int(num_ctx)},
-        }).encode("utf-8")
+        payload = json.dumps({"model": model, "messages": messages, "stream": True, "options": {"temperature": float(temperature), "num_ctx": int(num_ctx)}}).encode("utf-8")
+        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
 
-        req = urllib.request.Request(
-            url, data=payload, headers={"Content-Type": "application/json"}
-        )
-        with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
+        if self.log: self.log(f"[Sieć] Nawiązywanie połączenia z {url} (model: {model})...")
+        start_net = time.time()
+
+        with urllib.request.urlopen(req, timeout=600) as resp:
+            first_chunk_received = False
             for raw in resp:
                 line = raw.decode("utf-8").strip()
-                if not line:
-                    continue
+                if not line: continue
                 obj = json.loads(line)
-                if obj.get("error"):
-                    raise RuntimeError(str(obj["error"]))
-                msg = obj.get("message") or {}
-                if msg.get("content"):
-                    yield msg["content"]
-                if obj.get("done"):
-                    break
 
+                if not first_chunk_received:
+                    if self.log: self.log(f"[Sieć] Serwer odpowiedział po {time.time()-start_net:.1f}s. Rozpoczęto pobieranie tokenów.")
+                    first_chunk_received = True
 
-# --- Ustawienia i historia -----------------------------------------------
+                if obj.get("error"): raise RuntimeError(str(obj["error"]))
+                if obj.get("message", {}).get("content"): yield obj["message"]["content"]
+                if obj.get("done"): break
 
 class Config:
     def __init__(self, path):
         self.path = path
         self.base_url = DEFAULT_BASE_URL
-        self.model = PREFERRED_MODELS[0]
-        self.temperature = DEFAULT_TEMPERATURE
+        self.vision_model = PREFERRED_VISION_MODELS[0]
+        self.text_model = PREFERRED_TEXT_MODELS[0]
         self.load()
 
     def load(self):
@@ -245,21 +205,14 @@ class Config:
             try:
                 d = json.loads(self.path.read_text(encoding="utf-8"))
                 self.base_url = d.get("base_url", self.base_url)
-                self.model = d.get("model", self.model)
-                self.temperature = d.get("temperature", self.temperature)
-            except (json.JSONDecodeError, OSError):
-                pass
+                self.vision_model = d.get("vision_model", self.vision_model)
+                self.text_model = d.get("text_model", self.text_model)
+            except: pass
 
     def save(self):
         try:
-            self.path.write_text(json.dumps({
-                "base_url": self.base_url,
-                "model": self.model,
-                "temperature": self.temperature,
-            }, ensure_ascii=False, indent=2), encoding="utf-8")
-        except OSError as e:
-            print("Nie udało się zapisać konfiguracji:", e)
-
+            self.path.write_text(json.dumps({"base_url": self.base_url, "vision_model": self.vision_model, "text_model": self.text_model}, ensure_ascii=False, indent=2), encoding="utf-8")
+        except: pass
 
 class HistoryStore:
     def __init__(self, path):
@@ -269,27 +222,16 @@ class HistoryStore:
 
     def load(self):
         if self.path.exists():
-            try:
-                self.chats = json.loads(self.path.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
-                self.chats = []
+            try: self.chats = json.loads(self.path.read_text(encoding="utf-8"))
+            except: self.chats = []
 
     def save(self):
         try:
-            self.path.write_text(
-                json.dumps(self.chats, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
-        except OSError as e:
-            print("Nie udało się zapisać historii:", e)
+            self.path.write_text(json.dumps(self.chats, ensure_ascii=False, indent=2), encoding="utf-8")
+        except: pass
 
     def new_chat(self):
-        chat = {
-            "id": datetime.now().strftime("%Y%m%d%H%M%S%f"),
-            "title": "Nowy czat",
-            "created": datetime.now().isoformat(timespec="seconds"),
-            "messages": [],
-        }
+        chat = {"id": datetime.now().strftime("%Y%m%d%H%M%S%f"), "title": "Nowy dokument", "created": datetime.now().isoformat(timespec="seconds"), "messages": []}
         self.chats.insert(0, chat)
         return chat
 
@@ -297,652 +239,315 @@ class HistoryStore:
         self.chats = [c for c in self.chats if c["id"] != chat_id]
         self.save()
 
-
-# --- Interfejs graficzny --------------------------------------------------
-
 class ChatApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Ollama OCR Chat - przepisywanie dokumentów 1:1")
-        self.geometry("1060x700")
-        self.minsize(860, 540)
+        self.title("Ollama Enterprise HTR - Diagnostic Mode")
+        self.geometry("1250x850")
 
-        self.cfg = Config(CONFIG_FILE)
-        self.client = OllamaClient(self.cfg.base_url)
-        self.store = HistoryStore(HISTORY_FILE)
+        self.cfg = Config(Path(__file__).with_name("ollama_ocr_config.json"))
+        self.client = OllamaClient(self.cfg.base_url, logger_callback=self._log_to_gui)
+        self.store = HistoryStore(Path(__file__).with_name("ollama_ocr_history.json"))
+
         self.current_chat = None
         self.streaming = False
         self.msg_queue = queue.Queue()
-        self.models = []               # [{'name','vision','caps'}]
-        # Źródła stron: {'name','kind':'image','data':bytes}
-        #            lub {'name','kind':'pdf','pdf_id':str,'page_index':int}
+        self.models = []
         self.pending_attachments = []
-        self._pdf_store = {}           # pdf_id -> bajty pliku PDF (do re-renderu)
+        self._pdf_store = {}
         self._assistant_buffer = ""
 
         self._build_ui()
         self._refresh_chat_list()
         self._load_models_async()
 
-        if not self.store.chats:
-            self._new_chat()
-        else:
-            self._select_chat(self.store.chats[0]["id"])
+        if not self.store.chats: self._new_chat()
+        else: self._select_chat(self.store.chats[0]["id"])
 
         self.after(50, self._process_queue)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
-    # ---- Layout ----------------------------------------------------------
+    def _log_to_gui(self, msg):
+        """Wypisuje log do konsoli systemowej i wrzuca do kolejki GUI."""
+        stamp = datetime.now().strftime("%H:%M:%S")
+        formatted = f"[{stamp}] {msg}"
+        print(formatted)
+        self.msg_queue.put(("log", formatted))
 
     def _build_ui(self):
-        top = ttk.Frame(self, padding=(8, 6))
+        top = ttk.Frame(self, padding=(10, 8))
         top.pack(side=tk.TOP, fill=tk.X)
 
-        ttk.Label(top, text="Serwer:").pack(side=tk.LEFT)
+        ttk.Label(top, text="URL:").pack(side=tk.LEFT)
         self.url_var = tk.StringVar(value=self.cfg.base_url)
-        ttk.Entry(top, textvariable=self.url_var, width=24).pack(side=tk.LEFT, padx=(4, 10))
+        ttk.Entry(top, textvariable=self.url_var, width=20).pack(side=tk.LEFT, padx=(4, 12))
 
-        ttk.Label(top, text="Model:").pack(side=tk.LEFT)
-        self.model_var = tk.StringVar(value=self.cfg.model)
-        self.model_combo = ttk.Combobox(top, textvariable=self.model_var, width=26, state="readonly")
-        self.model_combo.pack(side=tk.LEFT, padx=(4, 10))
-        self.model_combo.bind("<<ComboboxSelected>>", self._on_model_selected)
+        ttk.Label(top, text="VLM:").pack(side=tk.LEFT)
+        self.vis_model_var = tk.StringVar(value=self.cfg.vision_model)
+        self.vis_combo = ttk.Combobox(top, textvariable=self.vis_model_var, width=18, state="readonly")
+        self.vis_combo.pack(side=tk.LEFT, padx=(4, 12))
 
-        ttk.Label(top, text="Temperatura:").pack(side=tk.LEFT)
-        self.temp_var = tk.DoubleVar(value=self.cfg.temperature)
-        ttk.Spinbox(top, from_=0.0, to=1.0, increment=0.1, width=5,
-                    textvariable=self.temp_var, command=self._on_temp_changed).pack(side=tk.LEFT, padx=(4, 10))
+        ttk.Label(top, text="LLM:").pack(side=tk.LEFT)
+        self.txt_model_var = tk.StringVar(value=self.cfg.text_model)
+        self.txt_combo = ttk.Combobox(top, textvariable=self.txt_model_var, width=18, state="readonly")
+        self.txt_combo.pack(side=tk.LEFT, padx=(4, 12))
 
-        ttk.Button(top, text="Połącz / Odśwież", command=self._load_models_async).pack(side=tk.LEFT)
-
-        status_bar = ttk.Frame(self, padding=(8, 0))
-        status_bar.pack(side=tk.TOP, fill=tk.X)
-        self.status_var = tk.StringVar(value="Łączenie…")
-        ttk.Label(status_bar, textvariable=self.status_var, foreground="#666").pack(side=tk.LEFT)
+        ttk.Button(top, text="Odśwież", command=self._load_models_async).pack(side=tk.LEFT)
+        self.status_var = tk.StringVar(value="Gotowy")
+        ttk.Label(top, textvariable=self.status_var, font=("Segoe UI", 9, "bold")).pack(side=tk.RIGHT, padx=10)
 
         main = ttk.Panedwindow(self, orient=tk.HORIZONTAL)
-        main.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=8, pady=8)
+        main.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=8, pady=6)
 
         left = ttk.Frame(main, width=220)
         main.add(left, weight=0)
         btns = ttk.Frame(left)
         btns.pack(side=tk.TOP, fill=tk.X, pady=(0, 4))
-        ttk.Button(btns, text="+ Nowy czat", command=self._new_chat).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        ttk.Button(btns, text="+ Nowy dokument", command=self._new_chat).pack(side=tk.LEFT, fill=tk.X, expand=True)
         ttk.Button(btns, text="Usuń", command=self._delete_chat, width=6).pack(side=tk.LEFT, padx=(4, 0))
-        self.chat_listbox = tk.Listbox(left, activestyle="none", exportselection=False)
+        self.chat_listbox = tk.Listbox(left, activestyle="none", exportselection=False, font=("Segoe UI", 9))
         self.chat_listbox.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         self.chat_listbox.bind("<<ListboxSelect>>", self._on_chat_selected)
 
         right = ttk.Frame(main)
         main.add(right, weight=1)
-        self.text = tk.Text(right, wrap=tk.WORD, state=tk.DISABLED, font=("Segoe UI", 10),
-                            padx=10, pady=8, background="#fafafa")
+        self.text = tk.Text(right, wrap=tk.WORD, state=tk.DISABLED, font=("Segoe UI", 10), padx=12, pady=10, background="#ffffff")
         self.text.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         vscroll = ttk.Scrollbar(self.text, command=self.text.yview)
         vscroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.text.configure(yscrollcommand=vscroll.set)
+
         self.text.tag_configure("user", foreground="#0b5cad", font=("Segoe UI", 10, "bold"), spacing1=8)
         self.text.tag_configure("assistant", foreground="#1a7f37", font=("Segoe UI", 10, "bold"), spacing1=8)
-        self.text.tag_configure("body", foreground="#222", spacing3=4, lmargin1=4, lmargin2=4)
-        self.text.tag_configure("attach", foreground="#8a5a00")
-        self.text.tag_configure("page", foreground="#555", font=("Segoe UI", 9, "bold"), spacing1=6, spacing3=2)
+        self.text.tag_configure("log_tag", foreground="#888888", font=("Consolas", 9))
+        self.text.tag_configure("body", foreground="#111111", spacing2=2, spacing3=4, lmargin1=4, lmargin2=4)
+        self.text.tag_configure("attach", foreground="#8a5a00", font=("Segoe UI", 9))
+        self.text.tag_configure("page", foreground="#444444", font=("Segoe UI", 10, "bold"), spacing1=10, spacing3=4)
         self.text.tag_configure("confok", foreground="#1a7f37", font=("Consolas", 9, "bold"))
-        self.text.tag_configure("conflow", foreground="#b00020", font=("Consolas", 9, "bold"))
-        self.text.tag_configure("summary", foreground="#0b5cad", font=("Segoe UI", 10, "bold"), spacing1=8, spacing3=4)
-        self.text.tag_configure("error", foreground="#b00020")
 
-        attach_bar = ttk.Frame(right)
-        attach_bar.pack(side=tk.BOTTOM, fill=tk.X, pady=(6, 2))
-        ttk.Button(attach_bar, text="📎 Dołącz dokument", command=self._attach_files).pack(side=tk.LEFT)
-        self.attach_label = ttk.Label(attach_bar, text="Brak załączników", foreground="#888")
-        self.attach_label.pack(side=tk.LEFT, padx=(8, 0))
+        attach_bar = ttk.Frame(right, padding=(0, 4))
+        attach_bar.pack(side=tk.BOTTOM, fill=tk.X)
+        ttk.Button(attach_bar, text="📎 Wybierz pliki", command=self._attach_files).pack(side=tk.LEFT)
+        self.attach_label = ttk.Label(attach_bar, text="Brak załączników", foreground="#777")
+        self.attach_label.pack(side=tk.LEFT, padx=(10, 0))
         ttk.Button(attach_bar, text="Wyczyść", command=self._clear_attachments).pack(side=tk.RIGHT)
 
-        bottom = ttk.Frame(right)
+        bottom = ttk.Frame(right, padding=(0, 4))
         bottom.pack(side=tk.BOTTOM, fill=tk.X)
         self.entry = tk.Text(bottom, height=3, wrap=tk.WORD, font=("Segoe UI", 10))
         self.entry.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.entry.bind("<Return>", self._on_enter)
-        self.send_btn = ttk.Button(bottom, text="Wyślij", command=self._send)
+        self.send_btn = ttk.Button(bottom, text="URUCHOM POTOK HTR\n(Z DIAGNOSTYKĄ)", command=self._send)
         self.send_btn.pack(side=tk.RIGHT, fill=tk.Y, padx=(6, 0))
 
-    # ---- Modele ----------------------------------------------------------
-
     def _load_models_async(self):
-        self.cfg.base_url = self.url_var.get().strip()
-        self.client = OllamaClient(self.cfg.base_url)
-        self.status_var.set("Łączenie…")
-
-        def worker():
-            try:
-                models = self.client.list_models()
-                self.msg_queue.put(("models", models))
-            except (urllib.error.URLError, OSError, ValueError) as e:
-                self.msg_queue.put(("models_error", str(e)))
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _selected_model_info(self):
-        name = self.model_var.get()
-        return next((m for m in self.models if m["name"] == name), None)
-
-    def _on_model_selected(self, _e=None):
-        self.cfg.model = self.model_var.get()
-        self.cfg.save()
-        self._update_status_for_model()
-
-    def _on_temp_changed(self):
-        try:
-            self.cfg.temperature = float(self.temp_var.get())
-            self.cfg.save()
-        except (tk.TclError, ValueError):
-            pass
-
-    def _update_status_for_model(self):
-        info = self._selected_model_info()
-        if not info:
-            return
-        if info["vision"]:
-            self.status_var.set(f"Model {info['name']} • 👁 vision • gotowy do OCR")
-        else:
-            self.status_var.set(
-                f"⚠ Model {info['name']} NIE obsługuje obrazów - nie odczyta zdjęć, "
-                f"tylko tekst. Wybierz model z 👁 vision."
-            )
-
-    # ---- Załączniki ------------------------------------------------------
+        self.client.base_url = self.url_var.get().strip()
+        self._log_to_gui("Pobieranie listy modeli z serwera...")
+        threading.Thread(target=lambda: self.msg_queue.put(("models", self.client.list_models())), daemon=True).start()
 
     def _attach_files(self):
-        pdf_hint = " *.pdf" if HAS_PDF else ""
-        paths = filedialog.askopenfilenames(
-            title="Wybierz skany/PDF do przepisania",
-            filetypes=[
-                ("Skany i PDF", f"*.png *.jpg *.jpeg *.webp *.gif *.bmp *.tiff{pdf_hint}"),
-                ("Obrazy", "*.png *.jpg *.jpeg *.webp *.gif *.bmp *.tiff"),
-                ("PDF", "*.pdf"),
-                ("Wszystkie pliki", "*.*"),
-            ],
-        )
-        if not paths:
-            return
+        paths = filedialog.askopenfilenames(filetypes=[("Dokumenty", "*.png *.jpg *.jpeg *.pdf")])
         for p in paths:
             path = Path(p)
-            suffix = path.suffix.lower()
-            if suffix == ".pdf":
-                self._attach_pdf(path)
-            elif suffix in IMAGE_EXTS:
-                try:
-                    raw = path.read_bytes()
-                except OSError as e:
-                    messagebox.showerror("Błąd", f"Nie można wczytać {path.name}: {e}")
-                    continue
-                self.pending_attachments.append({
-                    "name": path.name,
-                    "kind": "image",
-                    "data": raw,
-                })
+            if path.suffix.lower() == ".pdf" and HAS_PDF:
+                pdf_bytes = path.read_bytes()
+                pdf_id = f"pdf_{len(self._pdf_store)}_{path.name}"
+                self._pdf_store[pdf_id] = pdf_bytes
+                with pymupdf.open(stream=pdf_bytes, filetype="pdf") as doc:
+                    for i in range(doc.page_count):
+                        self.pending_attachments.append({"name": f"{path.name} (str {i+1})", "kind": "pdf", "pdf_id": pdf_id, "page_index": i})
             else:
-                messagebox.showwarning(
-                    "Nieobsługiwany plik",
-                    f"{path.name}: obsługiwane są obrazy (PNG/JPG…) oraz PDF.",
-                )
-        self._update_attach_label()
-
-        if self.pending_attachments and not self.entry.get("1.0", tk.END).strip():
-            self.entry.insert("1.0", TRANSCRIBE_PROMPT)
-
-    def _attach_pdf(self, path):
-        """Dzieli PDF na strony (źródło zachowane, by renderować w dowolnym DPI)."""
-        if not HAS_PDF:
-            messagebox.showerror(
-                "Brak obsługi PDF",
-                "Aby wczytywać PDF, zainstaluj bibliotekę PyMuPDF:\n\n"
-                "    pip install pymupdf",
-            )
-            return
-        try:
-            pdf_bytes = path.read_bytes()
-            doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
-            n_pages = doc.page_count
-            doc.close()
-        except Exception as e:  # noqa: BLE001
-            messagebox.showerror("Błąd PDF", f"Nie można otworzyć {path.name}: {e}")
-            return
-
-        if n_pages > 15 and not messagebox.askyesno(
-            "Duży PDF",
-            f"{path.name} ma {n_pages} stron. Każda strona to osobne zapytanie - "
-            f"przepisywanie może długo trwać.\n\nKontynuować?",
-        ):
-            return
-
-        pdf_id = f"pdf{len(self._pdf_store)}_{path.name}"
-        self._pdf_store[pdf_id] = pdf_bytes
-        for i in range(n_pages):
-            self.pending_attachments.append({
-                "name": f"{path.name} [str. {i + 1}]",
-                "kind": "pdf",
-                "pdf_id": pdf_id,
-                "page_index": i,
-            })
-
-    def _render_page(self, entry, dpi):
-        """Zwraca base64 PNG danej strony w zadanym DPI (obraz albo strona PDF)."""
-        if entry["kind"] == "image":
-            return base64.b64encode(entry["data"]).decode("ascii")
-        pdf_bytes = self._pdf_store[entry["pdf_id"]]
-        doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
-        try:
-            pix = doc.load_page(entry["page_index"]).get_pixmap(dpi=dpi)
-            return base64.b64encode(pix.tobytes("png")).decode("ascii")
-        finally:
-            doc.close()
+                self.pending_attachments.append({"name": path.name, "kind": "image", "data": path.read_bytes()})
+        self.attach_label.configure(text=f"Dołączono stron: {len(self.pending_attachments)}")
 
     def _clear_attachments(self):
         self.pending_attachments = []
-        self._update_attach_label()
-
-    def _update_attach_label(self):
-        n = len(self.pending_attachments)
-        if n == 0:
-            self.attach_label.configure(text="Brak załączników", foreground="#888")
-        else:
-            names = ", ".join(a["name"] for a in self.pending_attachments)
-            self.attach_label.configure(text=f"{n} obraz(y): {names}", foreground="#8a5a00")
-
-    # ---- Lista czatów ----------------------------------------------------
+        self.attach_label.configure(text="Brak załączników")
 
     def _refresh_chat_list(self):
         self.chat_listbox.delete(0, tk.END)
-        for chat in self.store.chats:
-            self.chat_listbox.insert(tk.END, f"  {chat['title']}")
+        for chat in self.store.chats: self.chat_listbox.insert(tk.END, f"  {chat['title']}")
 
     def _new_chat(self):
         chat = self.store.new_chat()
         self.store.save()
         self._refresh_chat_list()
         self._select_chat(chat["id"])
-        self.entry.focus_set()
 
     def _delete_chat(self):
-        if not self.current_chat:
-            return
-        if not messagebox.askyesno("Usuń czat", "Na pewno usunąć ten czat?"):
-            return
-        self.store.delete(self.current_chat["id"])
-        self.current_chat = None
-        self._refresh_chat_list()
-        if self.store.chats:
-            self._select_chat(self.store.chats[0]["id"])
-        else:
-            self._new_chat()
+        if self.current_chat and messagebox.askyesno("Usuń", "Usunąć z historii?"):
+            self.store.delete(self.current_chat["id"])
+            self.current_chat = None
+            self._refresh_chat_list()
+            self._select_chat(self.store.chats[0]["id"] if self.store.chats else self._new_chat()["id"])
 
     def _on_chat_selected(self, _event):
         sel = self.chat_listbox.curselection()
-        if not sel:
-            return
-        chat = self.store.chats[sel[0]]
-        if not self.current_chat or chat["id"] != self.current_chat["id"]:
-            self._select_chat(chat["id"])
+        if sel: self._select_chat(self.store.chats[sel[0]]["id"])
 
     def _select_chat(self, chat_id):
-        chat = next((c for c in self.store.chats if c["id"] == chat_id), None)
-        if not chat:
-            return
-        self.current_chat = chat
-        idx = self.store.chats.index(chat)
-        self.chat_listbox.selection_clear(0, tk.END)
-        self.chat_listbox.selection_set(idx)
-        self._render_conversation()
-
-    # ---- Renderowanie ----------------------------------------------------
-
-    def _render_conversation(self):
-        self.text.configure(state=tk.NORMAL)
-        self.text.delete("1.0", tk.END)
-        for msg in self.current_chat["messages"]:
-            self._append_message(msg["role"], msg["content"], msg.get("attachments_note"))
-        self.text.configure(state=tk.DISABLED)
-        self.text.see(tk.END)
-
-    def _append_message(self, role, content, attachments_note=None):
-        self.text.configure(state=tk.NORMAL)
-        label = "Ty" if role == "user" else "Model"
-        tag = "user" if role == "user" else "assistant"
-        self.text.insert(tk.END, f"{label}\n", tag)
-        if attachments_note:
-            self.text.insert(tk.END, f"📎 {attachments_note}\n", "attach")
-        self.text.insert(tk.END, content + "\n", "body")
-        self.text.configure(state=tk.DISABLED)
-        self.text.see(tk.END)
-
-    # ---- Wysyłanie -------------------------------------------------------
+        self.current_chat = next((c for c in self.store.chats if c["id"] == chat_id), None)
+        if self.current_chat:
+            self.chat_listbox.selection_clear(0, tk.END)
+            self.chat_listbox.selection_set(self.store.chats.index(self.current_chat))
+            self.text.configure(state=tk.NORMAL)
+            self.text.delete("1.0", tk.END)
+            for msg in self.current_chat["messages"]:
+                tag = "user" if msg["role"] == "user" else "assistant"
+                self.text.insert(tk.END, f"{'Użytkownik' if tag=='user' else 'System'}:\n", tag)
+                if msg.get("attachments_note"): self.text.insert(tk.END, f"📎 {msg['attachments_note']}\n", "attach")
+                self.text.insert(tk.END, msg["content"] + "\n\n", "body")
+            self.text.configure(state=tk.DISABLED)
+            self.text.see(tk.END)
 
     def _on_enter(self, event):
-        if event.state & 0x0001:  # Shift = nowa linia
-            return
-        self._send()
-        return "break"
+        if not (event.state & 0x0001):
+            self._send()
+            return "break"
 
     def _send(self):
-        if self.streaming:
-            return
-        text = self.entry.get("1.0", tk.END).strip()
-        if not text and not self.pending_attachments:
-            return
-
-        info = self._selected_model_info()
-        if self.pending_attachments and info and not info["vision"]:
-            if not messagebox.askyesno(
-                "Model bez obsługi obrazu",
-                f"Model '{info['name']}' nie obsługuje obrazów - nie odczyta "
-                f"załączników i może zmyślić treść.\n\nWysłać mimo to?",
-            ):
-                return
-
-        attachments = list(self.pending_attachments)  # [{'name','b64'}]
-        n_imgs = len(attachments)
-
-        # Wolny jest tylko qwen3-vl (tryb "myślenia"); modele OCR ~5 s/stronę.
-        slow_model = "qwen3-vl" in self.model_var.get().lower()
-        if n_imgs >= 6 and slow_model:
-            est_min = round(n_imgs * 75 / 60)
-            if not messagebox.askyesno(
-                "Dużo stron",
-                f"Dołączono {n_imgs} stron, a model qwen3-vl przetwarza je wolno "
-                f"(~1 min/stronę), więc całość może zająć ok. {est_min} min.\n\n"
-                f"Wskazówka: model OCR (deepseek-ocr / LightOnOCR) zrobi to "
-                f"w kilkanaście sekund.\n\nKontynuować mimo to?",
-            ):
-                return
-
-        if not self.current_chat:
-            self._new_chat()
-
-        note = None
-        if attachments:
-            note = "Załączono: " + ", ".join(a["name"] for a in attachments)
-
-        self.entry.delete("1.0", tk.END)
-        self._clear_attachments()
-
-        # Zapis wiadomości użytkownika.
-        self.current_chat["messages"].append({
-            "role": "user", "content": text, "attachments_note": note,
-        })
-        self._append_message("user", text, note)
-
-        if self.current_chat["title"] == "Nowy czat":
-            base = text or (note or "Dokument")
-            self.current_chat["title"] = (base[:30] + "…") if len(base) > 30 else base
-            self._refresh_chat_list()
-            self._select_chat(self.current_chat["id"])
-        self.store.save()
-
-        self.text.configure(state=tk.NORMAL)
-        self.text.insert(tk.END, "Model\n", "assistant")
-        self.text.configure(state=tk.DISABLED)
-
-        self._assistant_buffer = ""
+        if self.streaming or not self.pending_attachments: return
         self.streaming = True
         self.send_btn.configure(state=tk.DISABLED)
 
-        model = self.model_var.get()
-        temp = self.temp_var.get()
+        attachments = list(self.pending_attachments)
+        self.pending_attachments.clear()
+        self.attach_label.configure(text="Brak dokumentów")
 
-        if attachments:
-            # Tryb strona-po-stronie: każdy obraz osobno - szybszy feedback,
-            # brak przepełnienia kontekstu, wierniejszy odczyt.
-            self.status_var.set(f"Przetwarzam stronę 1 z {n_imgs}…")
-            threading.Thread(
-                target=self._pages_worker,
-                args=(model, text, attachments, temp),
-                daemon=True,
-            ).start()
-        else:
-            # Zwykła rozmowa tekstowa z historią.
-            api_messages = [
-                {"role": m["role"], "content": m["content"]}
-                for m in self.current_chat["messages"]
-            ]
-            self.status_var.set("Model odpowiada…")
-            threading.Thread(
-                target=self._stream_worker,
-                args=(model, api_messages, temp, estimate_num_ctx(0)),
-                daemon=True,
-            ).start()
+        note = f"Rozpoczęto analizę {len(attachments)} stron(y)..."
+        self.current_chat["messages"].append({"role": "user", "content": "Analiza dokumentu.", "attachments_note": note})
+        if self.current_chat["title"] == "Nowy dokument":
+            self.current_chat["title"] = attachments[0]["name"]
+            self._refresh_chat_list()
 
-    def _stream_worker(self, model, messages, temperature, num_ctx):
-        try:
-            for chunk in self.client.chat_stream(model, messages, temperature, num_ctx):
-                self.msg_queue.put(("chunk", chunk))
-            self.msg_queue.put(("done", None))
-        except urllib.error.HTTPError as e:
-            try:
-                detail = e.read().decode("utf-8", "replace")[:500]
-            except Exception:  # noqa: BLE001
-                detail = e.reason
-            self.msg_queue.put(("stream_error", f"HTTP {e.code}: {detail}"))
-        except urllib.error.URLError as e:
-            self.msg_queue.put(("stream_error", f"Błąd połączenia: {e.reason}"))
-        except Exception as e:  # noqa: BLE001
-            self.msg_queue.put(("stream_error", str(e)))
+        self.text.configure(state=tk.NORMAL)
+        self.text.insert(tk.END, f"Użytkownik:\n", "user")
+        self.text.insert(tk.END, f"📎 {note}\n\n", "attach")
+        self.text.configure(state=tk.DISABLED)
 
-    def _pages_worker(self, model, prompt, pages, temperature):
-        """Każda strona = osobne zapytanie (duże okno tokenów). Liczy pewność
-        odczytu; przy < progu analizuje stronę ponownie w wyższym DPI."""
-        total = len(pages)
-        num_ctx = page_num_ctx(model)
-        send_prompt = effective_prompt(model, prompt)
-        confidences = []
-        low_pages = []
-        dpis = [BASE_DPI, RETRY_DPI][:MAX_ATTEMPTS]
+        self._assistant_buffer = ""
+        threading.Thread(target=self._pipeline_worker, args=(self.vis_model_var.get(), self.txt_model_var.get(), attachments), daemon=True).start()
+
+    def _pipeline_worker(self, v_model, t_model, pages):
+        start_pipeline = time.time()
 
         for idx, page in enumerate(pages):
-            self.msg_queue.put(("page_start", (idx + 1, total, page["name"])))
-            best_text, best_conf, attempts_used = "", -1, 0
+            page_start_time = time.time()
+            self.msg_queue.put(("page_start", (idx + 1, len(pages), page["name"])))
 
-            for attempt, dpi in enumerate(dpis):
-                attempts_used = attempt + 1
-                self.msg_queue.put(
-                    ("page_attempt", (idx + 1, total, attempt + 1, len(dpis), dpi, best_conf))
-                )
-                try:
-                    b64 = self._render_page(page, dpi)
-                except Exception as e:  # noqa: BLE001
-                    best_text = f"[BŁĄD renderowania strony {idx + 1}: {e}]"
-                    best_conf = 0
-                    break
+            # --- FAZA 1: OpenCV ---
+            self._log_to_gui(f"[Faza 1/4] Przygotowanie skanu (OpenCV CPU)...")
+            cv2_start = time.time()
+            try:
+                if page["kind"] == "image": raw_bytes = page["data"]
+                else:
+                    with pymupdf.open(stream=self._pdf_store[page["pdf_id"]], filetype="pdf") as doc:
+                        raw_bytes = doc.load_page(page["page_index"]).get_pixmap(dpi=BASE_DPI).tobytes("png")
+                b64_images = preprocess_with_opencv(raw_bytes)
+                self._log_to_gui(f"[Faza 1/4] Zakończono pomyślnie w {time.time()-cv2_start:.1f}s. Utworzono {len(b64_images)} wycinki obrazu.")
+            except Exception as e:
+                self._log_to_gui(f"[BŁĄD Fazy 1] OpenCV zawiódł: {e}")
+                continue
 
-                raw = ""
-                try:
-                    messages = [{"role": "user", "content": send_prompt, "images": [b64]}]
-                    for chunk in self.client.chat_stream(model, messages, temperature, num_ctx):
-                        raw += chunk
-                except urllib.error.HTTPError as e:
-                    try:
-                        detail = e.read().decode("utf-8", "replace")[:200]
-                    except Exception:  # noqa: BLE001
-                        detail = e.reason
-                    raw = f"[BŁĄD: HTTP {e.code}: {detail}]"
-                except urllib.error.URLError as e:
-                    raw = f"[BŁĄD połączenia: {e.reason}]"
-                except Exception as e:  # noqa: BLE001
-                    raw = f"[BŁĄD: {e}]"
+            # --- FAZA 2: VLM ---
+            self._log_to_gui(f"[Faza 2/4] Ekstrakcja tekstu VLM (Model: {v_model})...")
+            vlm_start = time.time()
+            raw_ocr = ""
+            try:
+                for chunk in self.client.chat_stream(v_model, [{"role": "user", "content": TRANSCRIBE_PROMPT, "images": b64_images}], DEFAULT_TEMPERATURE):
+                    raw_ocr += chunk
+                self._log_to_gui(f"[Faza 2/4] Odczyt VLM zakończony w {time.time()-vlm_start:.1f}s.")
+            except Exception as e:
+                self._log_to_gui(f"[BŁĄD Fazy 2] Awaria Ollamy: {e}")
 
-                cleaned = clean_ocr_text(raw)
-                conf = compute_confidence(cleaned)
-                if conf > best_conf:
-                    best_conf, best_text = conf, cleaned
-                if conf >= CONFIDENCE_THRESHOLD:
-                    break
+            raw_ocr = clean_ocr_text(raw_ocr)
 
-            best_conf = max(0, best_conf)
-            confidences.append(best_conf)
-            if best_conf < CONFIDENCE_THRESHOLD:
-                low_pages.append(idx + 1)
-            self.msg_queue.put(("page_result", (best_text, best_conf, attempts_used)))
+            # --- FAZA 3: RapidFuzz ---
+            self._log_to_gui(f"[Faza 3/4] Słownikowa weryfikacja RAG...")
+            fuzzed_start = time.time()
+            fuzzed_text = slownikowa_korekta_htr(raw_ocr)
+            self._log_to_gui(f"[Faza 3/4] Zakończono w {time.time()-fuzzed_start:.2f}s.")
 
-        avg = round(sum(confidences) / len(confidences)) if confidences else 0
-        self.msg_queue.put(("pages_done", (avg, low_pages)))
+            # --- FAZA 4: LLM ---
+            self._log_to_gui(f"[Faza 4/4] Kontekstowe wygładzanie (Model: {t_model})...")
+            llm_start = time.time()
+            final_text = ""
+            prompt = CORRECTION_PROMPT.format(raw_text=fuzzed_text)
+            try:
+                for chunk in self.client.chat_stream(t_model, [{"role": "user", "content": prompt}], 0.1, num_ctx=8192):
+                    final_text += chunk
+                    self.msg_queue.put(("chunk", chunk, "body"))
+                self._log_to_gui(f"[Faza 4/4] LLM zakończył w {time.time()-llm_start:.1f}s.")
+            except Exception as e:
+                self._log_to_gui(f"[BŁĄD Fazy 4] Awaria LLM: {e}")
+                final_text = fuzzed_text
 
-    # ---- Pętla zdarzeń ---------------------------------------------------
+            final_text = clean_ocr_text(final_text)
+            conf = compute_confidence(final_text)
+            self.msg_queue.put(("page_end", (conf, final_text)))
+
+            # --- ETA CALCULATION ---
+            pages_left = len(pages) - (idx + 1)
+            if pages_left > 0:
+                elapsed = time.time() - start_pipeline
+                avg_time = elapsed / (idx + 1)
+                eta_sec = int(avg_time * pages_left)
+                m, s = divmod(eta_sec, 60)
+                self._log_to_gui(f"--- Ukończono stronę {idx+1}. Szacowany czas do końca: {m}m {s}s ---")
+
+        self.msg_queue.put(("done", "Zakończono potok HTR."))
 
     def _process_queue(self):
         try:
             while True:
                 kind, data = self.msg_queue.get_nowait()
-                if kind == "models":
-                    self._on_models_loaded(data)
-                elif kind == "models_error":
-                    self.status_var.set(f"Nie można pobrać modeli: {data}")
+                if kind == "log":
+                    self.text.configure(state=tk.NORMAL)
+                    self.text.insert(tk.END, f"{data}\n", "log_tag")
+                    self.text.configure(state=tk.DISABLED)
+                    self.text.see(tk.END)
+                elif kind == "models":
+                    v_names = [m["name"] for m in data if m["vision"]]
+                    t_names = [m["name"] for m in data if not m["vision"]] or [m["name"] for m in data]
+                    self.vis_combo.configure(values=v_names)
+                    self.txt_combo.configure(values=t_names)
+                    if v_names: self.vis_model_var.set(next((p for p in PREFERRED_VISION_MODELS if p in v_names), v_names[0]))
+                    if t_names: self.txt_model_var.set(next((p for p in PREFERRED_TEXT_MODELS if p in t_names), t_names[0]))
                 elif kind == "page_start":
-                    self._on_page_start(data)
-                elif kind == "page_attempt":
-                    self._on_page_attempt(data)
-                elif kind == "page_result":
-                    self._on_page_result(data)
-                elif kind == "pages_done":
-                    self._on_pages_done(data)
+                    idx, tot, name = data
+                    self.text.configure(state=tk.NORMAL)
+                    self.text.insert(tk.END, f"\n--- WYNIK STRONA {idx}/{tot}: {name} ---\n", "page")
+                    self.text.configure(state=tk.DISABLED)
+                    self.text.see(tk.END)
+                    self.status_var.set(f"Analiza strony {idx} z {tot}...")
                 elif kind == "chunk":
-                    self._on_chunk(data)
+                    chunk_text, tag = data[0], data[1] if len(data)>1 else "body"
+                    self.text.configure(state=tk.NORMAL)
+                    self.text.insert(tk.END, chunk_text, tag)
+                    self.text.configure(state=tk.DISABLED)
+                    self.text.see(tk.END)
+                elif kind == "page_end":
+                    conf, final_text = data
+                    self.text.configure(state=tk.NORMAL)
+                    self.text.insert(tk.END, f"\n\n[Pewność HTR: {conf}%]\n", "confok")
+                    self.text.configure(state=tk.DISABLED)
+                    self._assistant_buffer += f"\n--- Strona ---\n{final_text}\n"
                 elif kind == "done":
-                    self._on_stream_done()
-                elif kind == "stream_error":
-                    self._on_stream_error(data)
-        except queue.Empty:
-            pass
+                    self.current_chat["messages"].append({"role": "assistant", "content": self._assistant_buffer})
+                    self.store.save()
+                    self.streaming = False
+                    self.send_btn.configure(state=tk.NORMAL)
+                    self.status_var.set(data)
+        except queue.Empty: pass
         self.after(50, self._process_queue)
-
-    def _on_models_loaded(self, models):
-        self.models = models
-        # Etykiety z oznaczeniem vision.
-        labels = [(m["name"] + ("  👁" if m["vision"] else "")) for m in models]
-        self._label_to_name = {lbl: m["name"] for lbl, m in zip(labels, models)}
-        self.model_combo.configure(values=[m["name"] for m in models])
-        names = [m["name"] for m in models]
-        if not names:
-            self.status_var.set("Serwer nie zwrócił modeli")
-            return
-        # Wybór: zapamiętany > lista preferowanych > pierwszy vision > pierwszy.
-        chosen = self.cfg.model if self.cfg.model in names else None
-        if not chosen:
-            chosen = next((p for p in PREFERRED_MODELS if p in names), None)
-        if not chosen:
-            chosen = next((m["name"] for m in models if m["vision"]), names[0])
-        self.model_var.set(chosen)
-        self._on_model_selected()
-
-    def _on_page_start(self, info):
-        idx, total, name = info
-        header = f"\n───── {name}  ({idx}/{total}) ─────\n"
-        self.text.configure(state=tk.NORMAL)
-        self.text.insert(tk.END, header, "page")
-        self.text.configure(state=tk.DISABLED)
-        self.text.see(tk.END)
-        self._assistant_buffer += header
-        self.status_var.set(f"Strona {idx}/{total}: analizuję…")
-
-    def _on_page_attempt(self, info):
-        idx, total, attempt, n_attempts, dpi, prev_conf = info
-        if attempt == 1:
-            self.status_var.set(f"Strona {idx}/{total}: analizuję (DPI {dpi})…")
-        else:
-            self.status_var.set(
-                f"Strona {idx}/{total}: pewność {prev_conf}% (<{CONFIDENCE_THRESHOLD}%) "
-                f"- ponawiam {attempt}/{n_attempts} w DPI {dpi}…"
-            )
-
-    def _on_page_result(self, info):
-        text, conf, attempts = info
-        ok = conf >= CONFIDENCE_THRESHOLD
-        bar = self._confidence_bar(conf)
-        retry_note = "" if attempts <= 1 else f" • prób: {attempts}"
-        line = f"[pewność {conf}%  {bar}{retry_note}]"
-        if not ok:
-            line += "  ⚠ SPRAWDŹ RĘCZNIE"
-        self.text.configure(state=tk.NORMAL)
-        self.text.insert(tk.END, line + "\n", "confok" if ok else "conflow")
-        self.text.insert(tk.END, (text or "").rstrip() + "\n", "body")
-        self.text.configure(state=tk.DISABLED)
-        self.text.see(tk.END)
-        self._assistant_buffer += line + "\n" + (text or "").rstrip() + "\n"
-
-    @staticmethod
-    def _confidence_bar(conf):
-        filled = round(conf / 10)
-        return "█" * filled + "░" * (10 - filled)
-
-    def _on_pages_done(self, info):
-        avg, low_pages = info
-        summary = f"\n═════ PODSUMOWANIE • średnia pewność: {avg}% ═════\n"
-        if low_pages:
-            pages_str = ", ".join(str(p) for p in low_pages)
-            summary += (f"Strony do ręcznego sprawdzenia (pewność <{CONFIDENCE_THRESHOLD}%): "
-                        f"{pages_str}\n")
-        else:
-            summary += "Wszystkie strony powyżej progu pewności.\n"
-        self.text.configure(state=tk.NORMAL)
-        self.text.insert(tk.END, summary, "summary")
-        self.text.configure(state=tk.DISABLED)
-        self.text.see(tk.END)
-        self._assistant_buffer += summary
-        self._finish_streaming(f"Gotowe • średnia pewność {avg}%")
-
-    def _on_chunk(self, chunk):
-        self.text.configure(state=tk.NORMAL)
-        self.text.insert(tk.END, chunk, "body")
-        self.text.configure(state=tk.DISABLED)
-        self.text.see(tk.END)
-        self._assistant_buffer += chunk
-
-    def _finish_streaming(self, status):
-        """Zapisuje odpowiedź modelu do historii i odblokowuje interfejs."""
-        self.current_chat["messages"].append(
-            {"role": "assistant", "content": self._assistant_buffer}
-        )
-        self.store.save()
-        self._assistant_buffer = ""
-        self.streaming = False
-        self.send_btn.configure(state=tk.NORMAL)
-        self.status_var.set(status)
-        self.entry.focus_set()
-
-    def _on_stream_done(self):
-        self.text.configure(state=tk.NORMAL)
-        self.text.insert(tk.END, "\n", "body")
-        self.text.configure(state=tk.DISABLED)
-        self.current_chat["messages"].append(
-            {"role": "assistant", "content": self._assistant_buffer}
-        )
-        self.store.save()
-        self._assistant_buffer = ""
-        self.streaming = False
-        self.send_btn.configure(state=tk.NORMAL)
-        self._update_status_for_model()
-        self.entry.focus_set()
-
-    def _on_stream_error(self, message):
-        self.text.configure(state=tk.NORMAL)
-        self.text.insert(tk.END, f"\n[{message}]\n", "error")
-        self.text.configure(state=tk.DISABLED)
-        self.text.see(tk.END)
-        self._assistant_buffer = ""
-        self.streaming = False
-        self.send_btn.configure(state=tk.NORMAL)
-        self.status_var.set("Błąd")
 
     def _on_close(self):
         self.cfg.base_url = self.url_var.get().strip()
-        self.cfg.model = self.model_var.get()
-        try:
-            self.cfg.temperature = float(self.temp_var.get())
-        except (tk.TclError, ValueError):
-            pass
+        self.cfg.vision_model = self.vis_model_var.get()
+        self.cfg.text_model = self.txt_model_var.get()
         self.cfg.save()
         self.store.save()
         self.destroy()
-
 
 if __name__ == "__main__":
     app = ChatApp()
