@@ -1,0 +1,191 @@
+[
+  {
+    "page": 1,
+    "id": "imie_nazwisko",
+    "label": "Imię i nazwisko",
+    "type": "name",
+    "value": "TODEF BRXIC",
+    "raw": "TODEF BRXIC",
+    "confidence": 85
+  },
+  {
+    "page": 1,
+    "id": "data_urodzenia",
+    "label": "Data urodzenia",
+    "type": "date",
+    "value": "20.03.1960",
+    "raw": "20.03.1960",
+    "confidence": 95
+  },
+  {
+    "page": 1,
+    "id": "miejsce_urodzenia",
+    "label": "Miejsce urodzenia",
+    "type": "place",
+    "value": "STASZOWE",
+    "raw": "STASZOWE",
+    "confidence": 80
+  },
+  {
+    "page": 1,
+    "id": "zatrudnienie",
+    "label": "Miejsce zatrudnienia",
+    "type": "place",
+    "value": "[BŁĄD: timed out]",
+    "raw": "[BŁĄD: timed out]",
+    "confidence": 80
+  },
+  {
+    "page": 1,
+    "id": "dom_powierzchnia",
+    "label": "Dom - powierzchnia (m2)",
+    "type": "amount",
+    "value": "138",
+    "raw": "138",
+    "confidence": 90
+  },
+  {
+    "page": 1,
+    "id": "dom_tytul",
+    "label": "Dom - tytuł prawny",
+    "type": "enum",
+    "value": "CSTA5N05C",
+    "raw": "CSTA5N05C",
+    "confidence": 45
+  },
+  {
+    "page": 1,
+    "id": "mieszkanie",
+    "label": "Mieszkanie",
+    "type": "enum",
+    "value": "NIE DOTYCZY",
+    "raw": "NIE DOTYCZY",
+    "confidence": 88
+  },
+  {
+    "page": 1,
+    "id": "mieszkanie_tytul",
+    "label": "Mieszkanie - tytuł prawny",
+    "type": "enum",
+    "value": "WŁASNOŚĆ",
+    "raw": "WŁASNOŚĆ",
+    "confidence": 88
+  },
+  {
+    "page": 1,
+    "id": "gosp_rodzaj",
+    "label": "Gospodarstwo - rodzaj",
+    "type": "enum",
+    "value": "CIEZKI ROINE",
+    "raw": "CIEZKI ROINE",
+    "confidence": 45
+  },
+  {
+    "page": 1,
+    "id": "gosp_powierzchnia",
+    "label": "Gospodarstwo - powierzchnia (m2)",
+    "type": "amount",
+    "value": "15800",
+    "raw": "15800",
+    "confidence": 90
+  },
+  {
+    "page": 1,
+    "id": "gosp_zabudowa",
+    "label": "Gospodarstwo - rodzaj zabudowy",
+    "type": "enum",
+    "value": "pola",
+    "raw": "pola",
+    "confidence": 45
+  },
+  {
+    "page": 2,
+    "id": "gosp_tytul_prawny",
+    "label": "Gospodarstwo - tytuł prawny",
+    "type": "enum",
+    "value": "WŁASNOŚĆ",
+    "raw": "Własność",
+    "confidence": 88
+  },
+  {
+    "page": 2,
+    "id": "gosp_dochod",
+    "label": "Gospodarstwo - przychód i dochód",
+    "type": "text",
+    "value": "[BŁĄD: timed out]",
+    "raw": "[BŁĄD: timed out]",
+    "confidence": 80
+  },
+  {
+    "page": 2,
+    "id": "inne_nier_powierzchnia",
+    "label": "Inne nieruchomości - powierzchnia",
+    "type": "amount",
+    "value": "59",
+    "raw": "59",
+    "confidence": 90
+  },
+  {
+    "page": 2,
+    "id": "inne_nier_opis",
+    "label": "Inne nieruchomości - opis",
+    "type": "text",
+    "value": "Czciątko (dom) powierzchnia: 859 m² ułasność, lokiel ustugowy 57,42 m² ułasność, 1/4 2 418 m² ułasno działka (lokali), garaż 19 m² - ułasność, las 8700 m² - ułasność",
+    "raw": "Czciątko (dom) powierzchnia: 859 m² ułasność, lokiel ustugowy 57,42 m² ułasność, 1/4 2 418 m² ułasno działka (lokali), garaż 19 m² - ułasność, las 8700 m² - ułasność",
+    "confidence": 80
+  },
+  {
+    "page": 2,
+    "id": "srodki_pln",
+    "label": "Środki pieniężne (PLN)",
+    "type": "text",
+    "value": "[nieczytelne]",
+    "raw": "",
+    "confidence": 25
+  },
+  {
+    "page": 2,
+    "id": "srodki_obce",
+    "label": "Środki pieniężne (waluta obca)",
+    "type": "text",
+    "value": "[BŁĄD: timed out]",
+    "raw": "[BŁĄD: timed out]",
+    "confidence": 80
+  },
+  {
+    "page": 2,
+    "id": "papiery_wartosciowe",
+    "label": "Papiery wartościowe",
+    "type": "text",
+    "value": "[BŁĄD: timed out]",
+    "raw": "[BŁĄD: timed out]",
+    "confidence": 80
+  },
+  {
+    "page": 2,
+    "id": "papiery_kwota",
+    "label": "Papiery wartościowe - kwota",
+    "type": "amount",
+    "value": "2",
+    "raw": "2",
+    "confidence": 45
+  },
+  {
+    "page": 2,
+    "id": "przetarg_odp",
+    "label": "Nabycie w przetargu (tak/nie)",
+    "type": "enum",
+    "value": "UŻYTKOWANIE WIECZYSTE",
+    "raw": "nie",
+    "confidence": 88
+  },
+  {
+    "page": 2,
+    "id": "przetarg_mienie",
+    "label": "Przetarg - rodzaj mienia",
+    "type": "enum",
+    "value": "[BŁĄD: timed out]",
+    "raw": "[BŁĄD: timed out]",
+    "confidence": 45
+  }
+]

@@ -1,0 +1,67 @@
+{
+  "form": "Oświadczenie o stanie majątkowym (Dz.U. poz. 1825)",
+  "note": "box = [x, y, w, h] znormalizowane 0..1 względem całej strony. Dostrój przez: python field_ocr.py kalibracja <plik.pdf>",
+  "pages": [
+    {
+      "page_index": 0,
+      "fields": [
+        {"id": "imie_nazwisko", "label": "Imię i nazwisko", "type": "name", "box": [0.30, 0.204, 0.42, 0.034]},
+        {"id": "data_urodzenia", "label": "Data urodzenia", "type": "date", "box": [0.14, 0.246, 0.31, 0.032]},
+        {"id": "miejsce_urodzenia", "label": "Miejsce urodzenia", "type": "place", "box": [0.57, 0.246, 0.35, 0.030]},
+        {"id": "zatrudnienie", "label": "Miejsce zatrudnienia", "type": "place", "box": [0.27, 0.274, 0.66, 0.032]},
+        {"id": "dom_powierzchnia", "label": "Dom - powierzchnia (m2)", "type": "amount", "box": [0.29, 0.459, 0.15, 0.030]},
+        {"id": "dom_tytul", "label": "Dom - tytuł prawny", "type": "enum", "box": [0.27, 0.501, 0.34, 0.030]},
+        {"id": "mieszkanie", "label": "Mieszkanie", "type": "enum", "box": [0.66, 0.519, 0.32, 0.030]},
+        {"id": "mieszkanie_tytul", "label": "Mieszkanie - tytuł prawny", "type": "enum", "box": [0.42, 0.594, 0.38, 0.032]},
+        {"id": "gosp_rodzaj", "label": "Gospodarstwo - rodzaj", "type": "enum", "box": [0.31, 0.631, 0.30, 0.030]},
+        {"id": "gosp_powierzchnia", "label": "Gospodarstwo - powierzchnia (m2)", "type": "amount", "box": [0.72, 0.631, 0.20, 0.030]},
+        {"id": "gosp_zabudowa", "label": "Gospodarstwo - rodzaj zabudowy", "type": "enum", "box": [0.33, 0.664, 0.30, 0.030]}
+      ]
+    },
+    {
+      "page_index": 1,
+      "fields": [
+        {"id": "gosp_tytul_prawny", "label": "Gospodarstwo - tytuł prawny", "type": "enum", "box": [0.27, 0.116, 0.32, 0.030]},
+        {"id": "gosp_dochod", "label": "Gospodarstwo - przychód i dochód", "type": "text", "box": [0.14, 0.160, 0.60, 0.032]},
+        {"id": "inne_nier_powierzchnia", "label": "Inne nieruchomości - powierzchnia", "type": "amount", "box": [0.74, 0.188, 0.16, 0.030]},
+        {"id": "inne_nier_opis", "label": "Inne nieruchomości - opis", "type": "text", "box": [0.09, 0.188, 0.84, 0.088]},
+        {"id": "srodki_pln", "label": "Środki pieniężne (PLN)", "type": "text", "box": [0.12, 0.296, 0.80, 0.064]},
+        {"id": "srodki_obce", "label": "Środki pieniężne (waluta obca)", "type": "text", "box": [0.55, 0.352, 0.37, 0.030]},
+        {"id": "papiery_wartosciowe", "label": "Papiery wartościowe", "type": "text", "box": [0.30, 0.384, 0.30, 0.030]},
+        {"id": "papiery_kwota", "label": "Papiery wartościowe - kwota", "type": "amount", "box": [0.62, 0.408, 0.30, 0.030]},
+        {"id": "przetarg_odp", "label": "Nabycie w przetargu (tak/nie)", "type": "enum", "box": [0.38, 0.505, 0.34, 0.030]},
+        {"id": "przetarg_mienie", "label": "Przetarg - rodzaj mienia", "type": "enum", "box": [0.22, 0.548, 0.46, 0.032]}
+      ]
+    },
+    {
+      "page_index": 2,
+      "fields": [
+        {"id": "III_1b", "label": "III.1.b - jestem członkiem", "type": "enum", "box": [0.09, 0.300, 0.55, 0.045]},
+        {"id": "III_1b_dochod", "label": "III.1.b - dochód", "type": "enum", "box": [0.60, 0.386, 0.35, 0.030]},
+        {"id": "III_2b", "label": "III.2.b - zajęcia w spółkach", "type": "enum", "box": [0.09, 0.500, 0.55, 0.045]},
+        {"id": "III_2b_dochod", "label": "III.2.b - dochód", "type": "enum", "box": [0.60, 0.582, 0.35, 0.030]},
+        {"id": "III_3b", "label": "III.3.b - spółdzielnia", "type": "enum", "box": [0.09, 0.668, 0.55, 0.045]},
+        {"id": "III_3b_dochod", "label": "III.3.b - dochód", "type": "enum", "box": [0.60, 0.772, 0.35, 0.030]}
+      ]
+    },
+    {
+      "page_index": 3,
+      "fields": [
+        {"id": "IV_spolki", "label": "IV.4 - udziały/akcje w spółkach", "type": "enum", "box": [0.09, 0.135, 0.55, 0.045]},
+        {"id": "IV_spolki_dochod", "label": "IV.4 - dochód", "type": "enum", "box": [0.60, 0.226, 0.35, 0.030]},
+        {"id": "IV_spolka_10proc", "label": "IV - spółka >10%", "type": "enum", "box": [0.09, 0.303, 0.45, 0.032]},
+        {"id": "IV_dzialalnosc_dochod", "label": "IV - dochód z działalności", "type": "amount", "box": [0.60, 0.552, 0.35, 0.032]},
+        {"id": "V_mienie_ruchome", "label": "V - mienie ruchome (pojazdy)", "type": "text", "box": [0.07, 0.665, 0.86, 0.115]}
+      ]
+    },
+    {
+      "page_index": 4,
+      "fields": [
+        {"id": "VI_zobowiazania", "label": "VI - zobowiązania pieniężne (kredyty)", "type": "text", "box": [0.07, 0.172, 0.86, 0.150]},
+        {"id": "VII_inne_dane", "label": "VII - inne dane (dochody)", "type": "text", "box": [0.07, 0.352, 0.86, 0.150]},
+        {"id": "VII_dochod_suma", "label": "VII - dochód łącznie", "type": "amount", "box": [0.60, 0.470, 0.36, 0.034]},
+        {"id": "miejscowosc_data", "label": "Miejscowość i data", "type": "text", "box": [0.08, 0.610, 0.42, 0.036]}
+      ]
+    }
+  ]
+}
