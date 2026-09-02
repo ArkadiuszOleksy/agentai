@@ -4,8 +4,8 @@
     "id": "imie_nazwisko",
     "label": "Imię i nazwisko",
     "type": "name",
-    "value": "TODEF BRXIC",
-    "raw": "TODEF BRXIC",
+    "value": "JÓZEF BRZYK",
+    "raw": "JÓZEF BRZYK",
     "confidence": 85
   },
   {
@@ -31,8 +31,8 @@
     "id": "zatrudnienie",
     "label": "Miejsce zatrudnienia",
     "type": "place",
-    "value": "[BŁĄD: timed out]",
-    "raw": "[BŁĄD: timed out]",
+    "value": "Sietokrzyski",
+    "raw": "Sietokrzyski",
     "confidence": 80
   },
   {
@@ -49,9 +49,9 @@
     "id": "dom_tytul",
     "label": "Dom - tytuł prawny",
     "type": "enum",
-    "value": "CSTA5N05C",
-    "raw": "CSTA5N05C",
-    "confidence": 45
+    "value": "WŁASNOŚĆ",
+    "raw": "WŁASNOŚĆ",
+    "confidence": 88
   },
   {
     "page": 1,
@@ -67,18 +67,18 @@
     "id": "mieszkanie_tytul",
     "label": "Mieszkanie - tytuł prawny",
     "type": "enum",
-    "value": "WŁASNOŚĆ",
-    "raw": "WŁASNOŚĆ",
-    "confidence": 88
+    "value": "",
+    "raw": "PUSTE",
+    "confidence": 100
   },
   {
     "page": 1,
     "id": "gosp_rodzaj",
     "label": "Gospodarstwo - rodzaj",
     "type": "enum",
-    "value": "CIEZKI ROINE",
-    "raw": "CIEZKI ROINE",
-    "confidence": 45
+    "value": "WŁASNOŚĆ",
+    "raw": "WŁASNOŚĆ",
+    "confidence": 88
   },
   {
     "page": 1,
@@ -94,9 +94,9 @@
     "id": "gosp_zabudowa",
     "label": "Gospodarstwo - rodzaj zabudowy",
     "type": "enum",
-    "value": "pola",
-    "raw": "pola",
-    "confidence": 45
+    "value": "NIE DOTYCZY",
+    "raw": "NIE DOTYCZY",
+    "confidence": 88
   },
   {
     "page": 2,
@@ -104,7 +104,7 @@
     "label": "Gospodarstwo - tytuł prawny",
     "type": "enum",
     "value": "WŁASNOŚĆ",
-    "raw": "Własność",
+    "raw": "WŁASNOŚĆ",
     "confidence": 88
   },
   {
@@ -112,8 +112,8 @@
     "id": "gosp_dochod",
     "label": "Gospodarstwo - przychód i dochód",
     "type": "text",
-    "value": "[BŁĄD: timed out]",
-    "raw": "[BŁĄD: timed out]",
+    "value": "1500 zł",
+    "raw": "1500 zł",
     "confidence": 80
   },
   {
@@ -121,8 +121,8 @@
     "id": "inne_nier_powierzchnia",
     "label": "Inne nieruchomości - powierzchnia",
     "type": "amount",
-    "value": "59",
-    "raw": "59",
+    "value": "859",
+    "raw": "859",
     "confidence": 90
   },
   {
@@ -130,8 +130,8 @@
     "id": "inne_nier_opis",
     "label": "Inne nieruchomości - opis",
     "type": "text",
-    "value": "Czciątko (dom) powierzchnia: 859 m² ułasność, lokiel ustugowy 57,42 m² ułasność, 1/4 2 418 m² ułasno działka (lokali), garaż 19 m² - ułasność, las 8700 m² - ułasność",
-    "raw": "Czciątko (dom) powierzchnia: 859 m² ułasność, lokiel ustugowy 57,42 m² ułasność, 1/4 2 418 m² ułasno działka (lokali), garaż 19 m² - ułasność, las 8700 m² - ułasność",
+    "value": "Chata/łom 859 57,42 1/4 2 418 dąbka (łokci) 19 2700",
+    "raw": "Chata/łom\n859\n57,42\n1/4 2 418\ndąbka (łokci)\n19\n2700",
     "confidence": 80
   },
   {
@@ -139,43 +139,43 @@
     "id": "srodki_pln",
     "label": "Środki pieniężne (PLN)",
     "type": "text",
-    "value": "[nieczytelne]",
-    "raw": "",
-    "confidence": 25
+    "value": "79232,62 1000 euro",
+    "raw": "79232,62\n1000 euro",
+    "confidence": 80
   },
   {
     "page": 2,
     "id": "srodki_obce",
     "label": "Środki pieniężne (waluta obca)",
     "type": "text",
-    "value": "[BŁĄD: timed out]",
-    "raw": "[BŁĄD: timed out]",
-    "confidence": 80
+    "value": "[nieczytelne]",
+    "raw": "[nieczytelne]",
+    "confidence": 25
   },
   {
     "page": 2,
     "id": "papiery_wartosciowe",
     "label": "Papiery wartościowe",
     "type": "text",
-    "value": "[BŁĄD: timed out]",
-    "raw": "[BŁĄD: timed out]",
-    "confidence": 80
+    "value": "[nieczytelne]",
+    "raw": "[nieczytelne]",
+    "confidence": 25
   },
   {
     "page": 2,
     "id": "papiery_kwota",
     "label": "Papiery wartościowe - kwota",
     "type": "amount",
-    "value": "2",
-    "raw": "2",
-    "confidence": 45
+    "value": "2000",
+    "raw": "2000",
+    "confidence": 90
   },
   {
     "page": 2,
     "id": "przetarg_odp",
     "label": "Nabycie w przetargu (tak/nie)",
     "type": "enum",
-    "value": "UŻYTKOWANIE WIECZYSTE",
+    "value": "NIE",
     "raw": "nie",
     "confidence": 88
   },
@@ -184,8 +184,143 @@
     "id": "przetarg_mienie",
     "label": "Przetarg - rodzaj mienia",
     "type": "enum",
-    "value": "[BŁĄD: timed out]",
-    "raw": "[BŁĄD: timed out]",
-    "confidence": 45
+    "value": "NIE",
+    "raw": "NIE DOTYKA",
+    "confidence": 88
+  },
+  {
+    "page": 3,
+    "id": "III_1b",
+    "label": "III.1.b - jestem członkiem",
+    "type": "enum",
+    "value": "NIE DOTYCZY",
+    "raw": "NIE DOTYCZY",
+    "confidence": 88
+  },
+  {
+    "page": 3,
+    "id": "III_1b_dochod",
+    "label": "III.1.b - dochód",
+    "type": "enum",
+    "value": "WŁASNOŚĆ",
+    "raw": "WŁASNOŚĆ",
+    "confidence": 88
+  },
+  {
+    "page": 3,
+    "id": "III_2b",
+    "label": "III.2.b - zajęcia w spółkach",
+    "type": "enum",
+    "value": "",
+    "raw": "PUSTE",
+    "confidence": 100
+  },
+  {
+    "page": 3,
+    "id": "III_2b_dochod",
+    "label": "III.2.b - dochód",
+    "type": "enum",
+    "value": "NIE DOTYCZY",
+    "raw": "NIE DOTYCZY",
+    "confidence": 88
+  },
+  {
+    "page": 3,
+    "id": "III_3b",
+    "label": "III.3.b - spółdzielnia",
+    "type": "enum",
+    "value": "WŁASNOŚĆ?  (odczyt: WŁAŚNOŚĆ)",
+    "raw": "WŁAŚNOŚĆ",
+    "confidence": 60
+  },
+  {
+    "page": 3,
+    "id": "III_3b_dochod",
+    "label": "III.3.b - dochód",
+    "type": "enum",
+    "value": "",
+    "raw": "PUSTE",
+    "confidence": 100
+  },
+  {
+    "page": 4,
+    "id": "IV_spolki",
+    "label": "IV.4 - udziały/akcje w spółkach",
+    "type": "enum",
+    "value": "NIE DOTYCZY",
+    "raw": "NIE DOTYCZY",
+    "confidence": 88
+  },
+  {
+    "page": 4,
+    "id": "IV_spolki_dochod",
+    "label": "IV.4 - dochód",
+    "type": "enum",
+    "value": "WŁASNOŚĆ",
+    "raw": "WŁASNOŚĆ",
+    "confidence": 88
+  },
+  {
+    "page": 4,
+    "id": "IV_spolka_10proc",
+    "label": "IV - spółka >10%",
+    "type": "enum",
+    "value": "NIE DOTYCZY",
+    "raw": "NIE DOTYCZY",
+    "confidence": 88
+  },
+  {
+    "page": 4,
+    "id": "IV_dzialalnosc_dochod",
+    "label": "IV - dochód z działalności",
+    "type": "amount",
+    "value": "13983,92",
+    "raw": "13983,92",
+    "confidence": 90
+  },
+  {
+    "page": 4,
+    "id": "V_mienie_ruchome",
+    "label": "V - mienie ruchome (pojazdy)",
+    "type": "text",
+    "value": "1. NISSAN XTRAIL rok 2008 2. AUTO SAN H10 rok 1994 3. PEUGEOT 208 rok 2022 4. PEUGEOT 208 rok 2022",
+    "raw": "1. NISSAN XTRAIL rok 2008\n2. AUTO SAN H10 rok 1994\n3. PEUGEOT 208 rok 2022\n4. PEUGEOT 208 rok 2022",
+    "confidence": 80
+  },
+  {
+    "page": 5,
+    "id": "VI_zobowiazania",
+    "label": "VI - zobowiązania pieniężne (kredyty)",
+    "type": "text",
+    "value": "Kredyt hipoteczny budowy domu od 2012 roku do 2027 kwota kredytu 200 000 stan na 31.12.2023 - 16520 zł kredyt odnawiany kwota 50 000,1",
+    "raw": "Kredyt hipoteczny budowy domu\nod 2012 roku do 2027\nkwota kredytu 200 000\nstan na 31.12.2023 - 16520 zł\nkredyt odnawiany kwota 50 000,1",
+    "confidence": 80
+  },
+  {
+    "page": 5,
+    "id": "VII_inne_dane",
+    "label": "VII - inne dane (dochody)",
+    "type": "text",
+    "value": "100 348,26 zł",
+    "raw": "100 348,26 zł",
+    "confidence": 80
+  },
+  {
+    "page": 5,
+    "id": "VII_dochod_suma",
+    "label": "VII - dochód łącznie",
+    "type": "amount",
+    "value": "100 348 26 zł",
+    "raw": "100 348 26 zł",
+    "confidence": 90
+  },
+  {
+    "page": 5,
+    "id": "miejscowosc_data",
+    "label": "Miejscowość i data",
+    "type": "text",
+    "value": "Staszic 26.03.2024",
+    "raw": "Staszic 26.03.2024",
+    "confidence": 80
   }
 ]
