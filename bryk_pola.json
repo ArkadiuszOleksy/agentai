@@ -1,326 +1,170 @@
 [
   {
-    "page": 1,
     "id": "imie_nazwisko",
     "label": "Imię i nazwisko",
-    "type": "name",
-    "value": "JÓZEF BRZYK",
-    "raw": "JÓZEF BRZYK",
+    "value": "Józef Bryk",
     "confidence": 85
   },
   {
-    "page": 1,
     "id": "data_urodzenia",
     "label": "Data urodzenia",
-    "type": "date",
     "value": "20.03.1960",
-    "raw": "20.03.1960",
-    "confidence": 95
+    "confidence": 85
   },
   {
-    "page": 1,
     "id": "miejsce_urodzenia",
     "label": "Miejsce urodzenia",
-    "type": "place",
-    "value": "STASZOWE",
-    "raw": "STASZOWE",
-    "confidence": 80
+    "value": "STASZOWIE",
+    "confidence": 85
   },
   {
-    "page": 1,
-    "id": "zatrudnienie",
-    "label": "Miejsce zatrudnienia",
-    "type": "place",
-    "value": "Sietokrzyski",
-    "raw": "Sietokrzyski",
-    "confidence": 80
+    "id": "miejsce_zatrudnienia",
+    "label": "Miejsce zatrudnienia / stanowisko / funkcja",
+    "value": "Świętokrzyski Urząd Wojewódzki",
+    "confidence": 85
   },
   {
-    "page": 1,
     "id": "dom_powierzchnia",
-    "label": "Dom - powierzchnia (m2)",
-    "type": "amount",
+    "label": "Dom — powierzchnia (m2)",
     "value": "138",
-    "raw": "138",
-    "confidence": 90
+    "confidence": 85
   },
   {
-    "page": 1,
     "id": "dom_tytul",
-    "label": "Dom - tytuł prawny",
-    "type": "enum",
-    "value": "WŁASNOŚĆ",
-    "raw": "WŁASNOŚĆ",
-    "confidence": 88
+    "label": "Dom — tytuł prawny",
+    "value": "własność",
+    "confidence": 85
   },
   {
-    "page": 1,
-    "id": "mieszkanie",
-    "label": "Mieszkanie",
-    "type": "enum",
-    "value": "NIE DOTYCZY",
-    "raw": "NIE DOTYCZY",
-    "confidence": 88
+    "id": "mieszkanie_powierzchnia",
+    "label": "Mieszkanie — powierzchnia (m2)",
+    "value": "",
+    "confidence": 100
   },
   {
-    "page": 1,
     "id": "mieszkanie_tytul",
-    "label": "Mieszkanie - tytuł prawny",
-    "type": "enum",
-    "value": "",
-    "raw": "PUSTE",
+    "label": "Mieszkanie — tytuł prawny",
+    "value": "NIE DOTYCZY",
     "confidence": 100
   },
   {
-    "page": 1,
-    "id": "gosp_rodzaj",
-    "label": "Gospodarstwo - rodzaj",
-    "type": "enum",
-    "value": "WŁASNOŚĆ",
-    "raw": "WŁASNOŚĆ",
-    "confidence": 88
+    "id": "gospodarstwo_rodzaj",
+    "label": "Gospodarstwo rolne — rodzaj",
+    "value": "UŻYTKI ROLNE",
+    "confidence": 85
   },
   {
-    "page": 1,
-    "id": "gosp_powierzchnia",
-    "label": "Gospodarstwo - powierzchnia (m2)",
-    "type": "amount",
+    "id": "gospodarstwo_powierzchnia",
+    "label": "Gospodarstwo rolne — powierzchnia (m2)",
     "value": "15800",
-    "raw": "15800",
-    "confidence": 90
+    "confidence": 85
   },
   {
-    "page": 1,
-    "id": "gosp_zabudowa",
-    "label": "Gospodarstwo - rodzaj zabudowy",
-    "type": "enum",
-    "value": "NIE DOTYCZY",
-    "raw": "NIE DOTYCZY",
-    "confidence": 88
+    "id": "gospodarstwo_zabudowa",
+    "label": "Gospodarstwo — rodzaj zabudowy",
+    "value": "POLA",
+    "confidence": 85
   },
   {
-    "page": 2,
-    "id": "gosp_tytul_prawny",
-    "label": "Gospodarstwo - tytuł prawny",
-    "type": "enum",
-    "value": "WŁASNOŚĆ",
-    "raw": "WŁASNOŚĆ",
-    "confidence": 88
+    "id": "gospodarstwo_tytul",
+    "label": "Gospodarstwo — tytuł prawny",
+    "value": "własność",
+    "confidence": 85
   },
   {
-    "page": 2,
-    "id": "gosp_dochod",
-    "label": "Gospodarstwo - przychód i dochód",
-    "type": "text",
-    "value": "1500 zł",
-    "raw": "1500 zł",
-    "confidence": 80
+    "id": "gospodarstwo_dochod",
+    "label": "Gospodarstwo — przychód i dochód",
+    "value": "1500 zł ARIMR 1871,95",
+    "confidence": 85
   },
   {
-    "page": 2,
-    "id": "inne_nier_powierzchnia",
-    "label": "Inne nieruchomości - powierzchnia",
-    "type": "amount",
-    "value": "859",
-    "raw": "859",
-    "confidence": 90
+    "id": "inne_nieruchomosci",
+    "label": "Inne nieruchomości (place, działki) — opis",
+    "value": "działka[lokal] powierzchnia: 859 m² | własność lokal ustawoczy 57,42 m² i tasność, 1/6 z 419 m² losnośc' | działka(lokei), garas 19 m² - własność, las 2700 m² - własność",
+    "confidence": 85
   },
   {
-    "page": 2,
-    "id": "inne_nier_opis",
-    "label": "Inne nieruchomości - opis",
-    "type": "text",
-    "value": "Chata/łom 859 57,42 1/4 2 418 dąbka (łokci) 19 2700",
-    "raw": "Chata/łom\n859\n57,42\n1/4 2 418\ndąbka (łokci)\n19\n2700",
-    "confidence": 80
-  },
-  {
-    "page": 2,
     "id": "srodki_pln",
-    "label": "Środki pieniężne (PLN)",
-    "type": "text",
-    "value": "79232,62 1000 euro",
-    "raw": "79232,62\n1000 euro",
-    "confidence": 80
+    "label": "Środki pieniężne w walucie polskiej (PLN)",
+    "value": "45 000 zł",
+    "confidence": 85
   },
   {
-    "page": 2,
     "id": "srodki_obce",
-    "label": "Środki pieniężne (waluta obca)",
-    "type": "text",
-    "value": "[nieczytelne]",
-    "raw": "[nieczytelne]",
-    "confidence": 25
+    "label": "Środki pieniężne w walucie obcej",
+    "value": "1000 euro",
+    "confidence": 85
   },
   {
-    "page": 2,
     "id": "papiery_wartosciowe",
-    "label": "Papiery wartościowe",
-    "type": "text",
-    "value": "[nieczytelne]",
-    "raw": "[nieczytelne]",
-    "confidence": 25
+    "label": "Papiery wartościowe i kwota",
+    "value": "PLN F1 na kwotę: 1000 zł",
+    "confidence": 85
   },
   {
-    "page": 2,
-    "id": "papiery_kwota",
-    "label": "Papiery wartościowe - kwota",
-    "type": "amount",
-    "value": "2000",
-    "raw": "2000",
-    "confidence": 90
+    "id": "przetarg",
+    "label": "Nabycie mienia w przetargu (tak/nie + opis)",
+    "value": "tak",
+    "confidence": 85
   },
   {
-    "page": 2,
-    "id": "przetarg_odp",
-    "label": "Nabycie w przetargu (tak/nie)",
-    "type": "enum",
-    "value": "NIE",
-    "raw": "nie",
-    "confidence": 88
-  },
-  {
-    "page": 2,
-    "id": "przetarg_mienie",
-    "label": "Przetarg - rodzaj mienia",
-    "type": "enum",
-    "value": "NIE",
-    "raw": "NIE DOTYKA",
-    "confidence": 88
-  },
-  {
-    "page": 3,
-    "id": "III_1b",
-    "label": "III.1.b - jestem członkiem",
-    "type": "enum",
-    "value": "NIE DOTYCZY",
-    "raw": "NIE DOTYCZY",
-    "confidence": 88
-  },
-  {
-    "page": 3,
-    "id": "III_1b_dochod",
-    "label": "III.1.b - dochód",
-    "type": "enum",
-    "value": "WŁASNOŚĆ",
-    "raw": "WŁASNOŚĆ",
-    "confidence": 88
-  },
-  {
-    "page": 3,
-    "id": "III_2b",
-    "label": "III.2.b - zajęcia w spółkach",
-    "type": "enum",
+    "id": "spolki_funkcje",
+    "label": "III — funkcje w spółkach / fundacjach",
     "value": "",
-    "raw": "PUSTE",
     "confidence": 100
   },
   {
-    "page": 3,
-    "id": "III_2b_dochod",
-    "label": "III.2.b - dochód",
-    "type": "enum",
+    "id": "spolki_dochod",
+    "label": "III — dochód z tych funkcji",
     "value": "NIE DOTYCZY",
-    "raw": "NIE DOTYCZY",
-    "confidence": 88
-  },
-  {
-    "page": 3,
-    "id": "III_3b",
-    "label": "III.3.b - spółdzielnia",
-    "type": "enum",
-    "value": "WŁASNOŚĆ?  (odczyt: WŁAŚNOŚĆ)",
-    "raw": "WŁAŚNOŚĆ",
-    "confidence": 60
-  },
-  {
-    "page": 3,
-    "id": "III_3b_dochod",
-    "label": "III.3.b - dochód",
-    "type": "enum",
-    "value": "",
-    "raw": "PUSTE",
     "confidence": 100
   },
   {
-    "page": 4,
-    "id": "IV_spolki",
-    "label": "IV.4 - udziały/akcje w spółkach",
-    "type": "enum",
+    "id": "spoldzielnia",
+    "label": "III — funkcje w spółdzielni",
     "value": "NIE DOTYCZY",
-    "raw": "NIE DOTYCZY",
-    "confidence": 88
+    "confidence": 100
   },
   {
-    "page": 4,
-    "id": "IV_spolki_dochod",
-    "label": "IV.4 - dochód",
-    "type": "enum",
-    "value": "WŁASNOŚĆ",
-    "raw": "WŁASNOŚĆ",
-    "confidence": 88
-  },
-  {
-    "page": 4,
-    "id": "IV_spolka_10proc",
-    "label": "IV - spółka >10%",
-    "type": "enum",
+    "id": "udzialy_akcje",
+    "label": "IV — udziały/akcje w spółkach",
     "value": "NIE DOTYCZY",
-    "raw": "NIE DOTYCZY",
-    "confidence": 88
+    "confidence": 100
   },
   {
-    "page": 4,
-    "id": "IV_dzialalnosc_dochod",
-    "label": "IV - dochód z działalności",
-    "type": "amount",
+    "id": "dzialalnosc_dochod",
+    "label": "IV — dochód z działalności gospodarczej",
     "value": "13983,92",
-    "raw": "13983,92",
-    "confidence": 90
+    "confidence": 85
   },
   {
-    "page": 4,
-    "id": "V_mienie_ruchome",
-    "label": "V - mienie ruchome (pojazdy)",
-    "type": "text",
-    "value": "1. NISSAN XTRAIL rok 2008 2. AUTO SAN H10 rok 1994 3. PEUGEOT 208 rok 2022 4. PEUGEOT 208 rok 2022",
-    "raw": "1. NISSAN XTRAIL rok 2008\n2. AUTO SAN H10 rok 1994\n3. PEUGEOT 208 rok 2022\n4. PEUGEOT 208 rok 2022",
-    "confidence": 80
+    "id": "mienie_ruchome",
+    "label": "V — mienie ruchome (pojazdy)",
+    "value": "NISSAN X-TRAIL rok 2008 | AUTO SAN HLO 10h [nieczytelne] | PEUGEOT 208 rok 2022 | PEUGEOT 208 rok 2022 [nieczytelne]",
+    "confidence": 30
   },
   {
-    "page": 5,
-    "id": "VI_zobowiazania",
-    "label": "VI - zobowiązania pieniężne (kredyty)",
-    "type": "text",
-    "value": "Kredyt hipoteczny budowy domu od 2012 roku do 2027 kwota kredytu 200 000 stan na 31.12.2023 - 16520 zł kredyt odnawiany kwota 50 000,1",
-    "raw": "Kredyt hipoteczny budowy domu\nod 2012 roku do 2027\nkwota kredytu 200 000\nstan na 31.12.2023 - 16520 zł\nkredyt odnawiany kwota 50 000,1",
-    "confidence": 80
+    "id": "zobowiazania",
+    "label": "VI — zobowiązania pieniężne (kredyty)",
+    "value": "Kredyt hipotecowy budowy domu | od 2017 roku do 2027 | Kwota Kredytu: 200 000 | stan na 31.12.2023 - [nieczytelne] | Kredyt odnawialny Mbank 50 000 zł",
+    "confidence": 30
   },
   {
-    "page": 5,
-    "id": "VII_inne_dane",
-    "label": "VII - inne dane (dochody)",
-    "type": "text",
+    "id": "inne_dochody",
+    "label": "VII — inne dane / dochody",
     "value": "100 348,26 zł",
-    "raw": "100 348,26 zł",
-    "confidence": 80
+    "confidence": 85
   },
   {
-    "page": 5,
-    "id": "VII_dochod_suma",
-    "label": "VII - dochód łącznie",
-    "type": "amount",
-    "value": "100 348 26 zł",
-    "raw": "100 348 26 zł",
-    "confidence": 90
+    "id": "dochod_laczny",
+    "label": "VII — dochód łącznie",
+    "value": "100 348,26 zł",
+    "confidence": 85
   },
   {
-    "page": 5,
     "id": "miejscowosc_data",
     "label": "Miejscowość i data",
-    "type": "text",
-    "value": "Staszic 26.03.2024",
-    "raw": "Staszic 26.03.2024",
-    "confidence": 80
+    "value": "Staszów 26.03.2024",
+    "confidence": 85
   }
 ]

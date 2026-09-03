@@ -1,45 +1,30 @@
-===== STRONA 1 =====
-Imię i nazwisko: JÓZEF BRZYK
+===== POLA FORMULARZA (hybryda: z transkrypcji) =====
+
+Imię i nazwisko: Józef Bryk
 Data urodzenia: 20.03.1960
-Miejsce urodzenia: STASZOWE
-Miejsce zatrudnienia: Sietokrzyski
-Dom - powierzchnia (m2): 138
-Dom - tytuł prawny: WŁASNOŚĆ
-Mieszkanie: NIE DOTYCZY
-Mieszkanie - tytuł prawny: 
-Gospodarstwo - rodzaj: WŁASNOŚĆ
-Gospodarstwo - powierzchnia (m2): 15800
-Gospodarstwo - rodzaj zabudowy: NIE DOTYCZY
-
-===== STRONA 2 =====
-Gospodarstwo - tytuł prawny: WŁASNOŚĆ
-Gospodarstwo - przychód i dochód: 1500 zł
-Inne nieruchomości - powierzchnia: 859
-Inne nieruchomości - opis: Chata/łom 859 57,42 1/4 2 418 dąbka (łokci) 19 2700
-Środki pieniężne (PLN): 79232,62 1000 euro
-Środki pieniężne (waluta obca): [nieczytelne]   [SPRAWDŹ]
-Papiery wartościowe: [nieczytelne]   [SPRAWDŹ]
-Papiery wartościowe - kwota: 2000
-Nabycie w przetargu (tak/nie): NIE
-Przetarg - rodzaj mienia: NIE
-
-===== STRONA 3 =====
-III.1.b - jestem członkiem: NIE DOTYCZY
-III.1.b - dochód: WŁASNOŚĆ
-III.2.b - zajęcia w spółkach: 
-III.2.b - dochód: NIE DOTYCZY
-III.3.b - spółdzielnia: WŁASNOŚĆ?  (odczyt: WŁAŚNOŚĆ)   [SPRAWDŹ]
-III.3.b - dochód: 
-
-===== STRONA 4 =====
-IV.4 - udziały/akcje w spółkach: NIE DOTYCZY
-IV.4 - dochód: WŁASNOŚĆ
-IV - spółka >10%: NIE DOTYCZY
-IV - dochód z działalności: 13983,92
-V - mienie ruchome (pojazdy): 1. NISSAN XTRAIL rok 2008 2. AUTO SAN H10 rok 1994 3. PEUGEOT 208 rok 2022 4. PEUGEOT 208 rok 2022
-
-===== STRONA 5 =====
-VI - zobowiązania pieniężne (kredyty): Kredyt hipoteczny budowy domu od 2012 roku do 2027 kwota kredytu 200 000 stan na 31.12.2023 - 16520 zł kredyt odnawiany kwota 50 000,1
-VII - inne dane (dochody): 100 348,26 zł
-VII - dochód łącznie: 100 348 26 zł
-Miejscowość i data: Staszic 26.03.2024
+Miejsce urodzenia: STASZOWIE
+Miejsce zatrudnienia / stanowisko / funkcja: Świętokrzyski Urząd Wojewódzki
+Dom — powierzchnia (m2): 138
+Dom — tytuł prawny: własność
+Mieszkanie — powierzchnia (m2): —
+Mieszkanie — tytuł prawny: NIE DOTYCZY
+Gospodarstwo rolne — rodzaj: UŻYTKI ROLNE
+Gospodarstwo rolne — powierzchnia (m2): 15800
+Gospodarstwo — rodzaj zabudowy: POLA
+Gospodarstwo — tytuł prawny: własność
+Gospodarstwo — przychód i dochód: 1500 zł ARIMR 1871,95
+Inne nieruchomości (place, działki) — opis: działka[lokal] powierzchnia: 859 m² | własność lokal ustawoczy 57,42 m² i tasność, 1/6 z 419 m² losnośc' | działka(lokei), garas 19 m² - własność, las 2700 m² - własność
+Środki pieniężne w walucie polskiej (PLN): 45 000 zł
+Środki pieniężne w walucie obcej: 1000 euro
+Papiery wartościowe i kwota: PLN F1 na kwotę: 1000 zł
+Nabycie mienia w przetargu (tak/nie + opis): tak
+III — funkcje w spółkach / fundacjach: —
+III — dochód z tych funkcji: NIE DOTYCZY
+III — funkcje w spółdzielni: NIE DOTYCZY
+IV — udziały/akcje w spółkach: NIE DOTYCZY
+IV — dochód z działalności gospodarczej: 13983,92
+V — mienie ruchome (pojazdy): NISSAN X-TRAIL rok 2008 | AUTO SAN HLO 10h [nieczytelne] | PEUGEOT 208 rok 2022 | PEUGEOT 208 rok 2022 [nieczytelne]   [SPRAWDŹ]
+VI — zobowiązania pieniężne (kredyty): Kredyt hipotecowy budowy domu | od 2017 roku do 2027 | Kwota Kredytu: 200 000 | stan na 31.12.2023 - [nieczytelne] | Kredyt odnawialny Mbank 50 000 zł   [SPRAWDŹ]
+VII — inne dane / dochody: 100 348,26 zł
+VII — dochód łącznie: 100 348,26 zł
+Miejscowość i data: Staszów 26.03.2024
